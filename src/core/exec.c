@@ -85,7 +85,7 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-long parse_arith(char *inp_string);
+long parse_arith(char *inp_string, char **end);
 
 /**
  * Expand variables within command line
@@ -103,7 +103,7 @@ static char * expand_command ( const char *command ) {
 	char *head;
 	char *name;
 	char *tail;
-	//int setting_len;
+	int setting_len;
 	int new_len;
 	char *tmp;
 
@@ -132,19 +132,6 @@ static char * expand_command ( const char *command ) {
 		*end = '\0';
 		tail = ( end + 1 );
 		
-		//This is by Lynus: currently only parsing arith ops
-		{
-			long arith_res;
-			arith_res = parse_arith(name);
-			tmp = expcmd;
-			new_len = asprintf(&expcmd, "%s%ld%s", head, arith_res, tail);
-			free(tmp);
-			if(new_len < 0)
-				return NULL;
-		}
-		
-#if 0
-
 		/* Determine setting length */
 		setting_len = fetchf_named_setting ( name, NULL, 0 );
 		if ( setting_len < 0 )
@@ -166,7 +153,30 @@ static char * expand_command ( const char *command ) {
 			if ( new_len < 0 )
 				return NULL;
 		}
-#endif
+	}
+	
+	while(1)
+	{
+		head = expcmd;
+
+		/* Locate opener */
+		start = strstr ( expcmd, "$(" );
+		
+		if ( ! start )
+			break;
+		*start = '\0';
+		name = ( start + 2 );
+		
+		//This is by Lynus: currently only parsing arith ops
+		{
+			long arith_res;
+			arith_res = parse_arith(name, &tail);
+			tmp = expcmd;
+			new_len = asprintf(&expcmd, "%s%ld%s", head, arith_res, tail);
+			free(tmp);
+			if(new_len < 0)
+				return NULL;
+		}
 	}
 
 	return expcmd;

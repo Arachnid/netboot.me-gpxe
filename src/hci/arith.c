@@ -29,6 +29,7 @@ Ops: !, ~				(Highest)
 
 char *inp;
 int tok;
+int brackets;
 
 char *op_table = "!@@" "~@@" "*@@" "/@@" "%@@" "+@@" "-@@" "<@@" "<=@" "<<@" ">@@" ">=@" ">>@" "!=@" "==@" "&@@" "|@@" "^@@" "&&@" "||@";
 signed char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 5, 5, 4, 3, 2, 1, 0 };
@@ -63,6 +64,11 @@ static void input()
 {
 	char t_op[3] = { 0, 0, 0};
 	char *p1, *p2;
+	
+	if(tok == -1)
+		return;
+		
+	
 	ignore_whitespace();
 	
 	if(*inp)
@@ -78,6 +84,8 @@ static void input()
 		if(!p1 || !*inp)
 		{
 			tok = *t_op;
+			if(tok == ')' && brackets <= 0)
+				tok = -1;
 			return;
 		}
 		t_op[1] = *inp;
@@ -153,8 +161,10 @@ static long parse_num(void)
 		//flag = 1;
 	
 	if (accept('(')) {
+		brackets++;
 		num = parse_expr();
 		skip(')');
+		brackets--;
 		return flag * num;
 	}
 	
@@ -262,10 +272,13 @@ static long parse_expr(void)
 	return parse_prio(-1);
 }
 
-long parse_arith(char *inp_string)
+long parse_arith(char *inp_string, char **end)
 {
+	long value;
+	brackets = tok = 0;
 	inp = inp_string;
 	input();
-	return parse_expr();
-	
+	value = parse_expr();
+	*end = inp;
+	return value;
 }
