@@ -85,7 +85,7 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-long parse_arith(char *inp_string, char **end);
+int parse_arith(char *inp_string, char **end, char **buffer);
 
 /**
  * Expand variables within command line
@@ -108,7 +108,7 @@ static char * expand_command ( const char *command ) {
 	char *tmp;
 
 	/* Obtain temporary modifiable copy of command line */
-	expcmd = strdup ( command );
+	expcmd = strdup ( command );	
 	if ( ! expcmd )
 		return NULL;
 
@@ -154,7 +154,7 @@ static char * expand_command ( const char *command ) {
 				return NULL;
 		}
 	}
-	
+
 	while(1)
 	{
 		head = expcmd;
@@ -167,15 +167,21 @@ static char * expand_command ( const char *command ) {
 		*start = '\0';
 		name = ( start + 2 );
 		
-		//This is by Lynus: currently only parsing arith ops
 		{
-			long arith_res;
-			arith_res = parse_arith(name, &tail);
-			tmp = expcmd;
-			new_len = asprintf(&expcmd, "%s%ld%s", head, arith_res, tail);
-			free(tmp);
-			if(new_len < 0)
+			int ret;
+			char *arith_res;
+			ret = parse_arith(name, &tail, &arith_res);
+			
+			if(ret < 0)
+			{
+				free(arith_res);
+				free(expcmd);
 				return NULL;
+			}
+			
+			tmp = expcmd;
+			new_len = asprintf(&expcmd, "%s%s%s", head, arith_res, tail);
+			free(tmp);
 		}
 	}
 

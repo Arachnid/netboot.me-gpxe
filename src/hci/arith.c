@@ -22,13 +22,21 @@ Ops: !, ~				(Highest)
 #include <ctype.h>
 #include <string.h>
 
+#ifndef __ARITH_TEST__
 #include <lib.h>
+#endif
 
-#define NUM_OPS			20
+#define NUM_OPS		20
 #define MAX_PRIO		11
+#define MIN_TOK		257
+#define TOK_PLUS		(MIN_TOK + 5)
+#define TOK_MINUS	(MIN_TOK + 6)
+#define TOK_NUMBER	256
 
 char *inp;
 int tok;
+int err_val;
+long tok_value;
 int brackets;
 
 char *op_table = "!@@" "~@@" "*@@" "/@@" "%@@" "+@@" "-@@" "<@@" "<=@" "<<@" ">@@" ">=@" ">>@" "!=@" "==@" "&@@" "|@@" "^@@" "&&@" "||@";
@@ -67,36 +75,47 @@ static void input()
 	
 	if(tok == -1)
 		return;
-		
-	
+
 	ignore_whitespace();
 	
 	if(*inp)
 	{
 		if(isdigit(*inp))
 		{
-			tok = *inp++;
+			tok_value = 0;
+			tok = TOK_NUMBER;
+			while(isdigit(*inp))
+			{
+				tok_value = tok_value*10 + *inp++ - '0';
+			}
 			return;
 		}
 		
+		
 		t_op[0] = *inp++;
+		
+		if(*t_op == ')')
+		{
+			brackets--;
+			tok = ')';
+			return;
+		}
+		
 		p1 = strstr(op_table, t_op);
 		if(!p1 || !*inp)
 		{
 			tok = *t_op;
-			if(tok == ')' && brackets <= 0)
-				tok = -1;
 			return;
 		}
 		t_op[1] = *inp;
 		p2 = strstr(op_table, t_op);
 		if(!p2)
 		{
-			tok = 128 + (p1 - op_table)/3;
+			tok = MIN_TOK + (p1 - op_table)/3;
 			return;
 		}
 		inp++;
-		tok = 128 + (p2 - op_table)/3;
+		tok = MIN_TOK + (p2 - op_table)/3;
 	}
 	else
 		tok = -1;	
@@ -123,7 +142,8 @@ static int accept(int ch)
 static void skip(char ch)
 {
 	if (!accept(ch)) {
-		printf("expected '%c', got '%c'\n", ch, *inp);
+		err_val = -1;
+		printf("expected '%c', got '%c'\n", ch, tok);
 	}
 }
 
@@ -155,25 +175,26 @@ static long parse_num(void)
 	long num = 0;
 	int flag = 1;
 	
-	if(accept(134))				//Handle -NUM and +NUM
+	if(accept(TOK_MINUS))				//Handle -NUM and +NUM
 		flag = -1;
-	else if(accept(133)) {}
-		//flag = 1;
+	else if(accept(TOK_PLUS)) {}
 	
 	if (accept('(')) {
-		brackets++;
+	brackets++;
 		num = parse_expr();
 		skip(')');
-		brackets--;
 		return flag * num;
 	}
 	
-	while(isdigit(tok))
+	if(tok == TOK_NUMBER)
 	{
-		num = num*10 + tok - '0';
+		num = flag * tok_value;
 		input();
-	} 
-	return flag * num;
+		return num;
+	}
+	else
+		err_val = -1;
+	return 0;
 }
 
 #if 0
@@ -242,7 +263,9 @@ static long eval(int op, long op1, long op2)
 		case 18: return op1 && op2;
 		case 19: return op1 || op2;
 		
-		default: printf("Undefined operator\n");
+		default: 
+			err_val = -1;
+			printf("Undefined operator\n");
 		return -1;
 	}
 }
@@ -252,33 +275,74 @@ static long parse_prio(int prio)
 	long lhs = 0, rhs;
 	int op;
 	
-	if(tok < 128 || tok == 134 || tok == 133)		//All operators are >= 128. If it is not an operator, look for number
-		lhs = parse_num();
+	//input();
 	
-	while(tok != -1 && tok >= 128 && (op_prio[tok - 128] > prio + op_assoc[tok - 128]))
+	if(tok < MIN_TOK || tok == TOK_MINUS || tok == TOK_PLUS)		//All operators are >= 128. If it is not an operator, look for number
+	{
+		lhs = parse_num();
+	}
+	if(err_val)
+		return 0;
+	while(tok != -1 && tok >= MIN_TOK && (op_prio[tok - MIN_TOK] > prio + op_assoc[tok - MIN_TOK]))
 	{
 		op  = tok;
 		input();
-		rhs = parse_prio(op_prio[op - 128]);
-		lhs = eval(op - 128, lhs, rhs);
+		rhs = parse_prio(op_prio[op - MIN_TOK]);
+		
+		if(err_val)
+			return 0;
+		
+		lhs = eval(op - MIN_TOK, lhs, rhs);
 	}
 	return lhs;
 }
 
 static long parse_expr(void)
 {
-	//return add_op();
-	//return cmp_op();
 	return parse_prio(-1);
 }
 
-long parse_arith(char *inp_string, char **end)
+int parse_arith(char *inp_string, char **end, char **buffer)
 {
 	long value;
-	brackets = tok = 0;
+	brackets = err_val = tok = 0;
 	inp = inp_string;
 	input();
 	value = parse_expr();
+	
+	if(err_val)				//Read till we get a ')'
+	{
+		while(*inp && *inp != ')')
+			inp++;
+		input();
+	}
+	
 	*end = inp;
-	return value;
+	skip(')');
+	
+	if(err_val)
+	{
+		printf("Parse error\n");
+		return -1;
+	}
+	
+	if(buffer)
+		return asprintf(buffer, "%ld", value);
+	return -1;
 }
+
+#ifdef __ARITH_TEST__
+int main(int argc, char *argv[])
+{
+	char *ret_val;
+	int r;
+	int brackets = 0;
+	char *tail;
+	r = parse_arith(argv[1], &tail, &ret_val);
+	if(r < 0)
+		printf("%d Tail: %s\n", r, tail);
+	else
+		printf("%s Tail:%s\n", ret_val, tail);
+	return 0;
+}
+#endif
