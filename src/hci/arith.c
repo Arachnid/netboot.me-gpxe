@@ -33,11 +33,10 @@ Ops: !, ~				(Highest)
 #define TOK_MINUS	(MIN_TOK + 6)
 #define TOK_NUMBER	256
 
-char *inp;
+char *inp, *prev;
 int tok;
-int err_val;
+int err_val;		//skip, parse_num, eval
 long tok_value;
-int brackets;
 
 char *op_table = "!@@" "~@@" "*@@" "/@@" "%@@" "+@@" "-@@" "<@@" "<=@" "<<@" ">@@" ">=@" ">>@" "!=@" "==@" "&@@" "|@@" "^@@" "&&@" "||@";
 signed char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 5, 5, 4, 3, 2, 1, 0 };
@@ -76,6 +75,7 @@ static void input()
 	if(tok == -1)
 		return;
 
+	prev = inp;
 	ignore_whitespace();
 	
 	if(*inp)
@@ -93,14 +93,7 @@ static void input()
 		
 		
 		t_op[0] = *inp++;
-		
-		if(*t_op == ')')
-		{
-			brackets--;
-			tok = ')';
-			return;
-		}
-		
+				
 		p1 = strstr(op_table, t_op);
 		if(!p1 || !*inp)
 		{
@@ -180,7 +173,6 @@ static long parse_num(void)
 	else if(accept(TOK_PLUS)) {}
 	
 	if (accept('(')) {
-	brackets++;
 		num = parse_expr();
 		skip(')');
 		return flag * num;
@@ -265,8 +257,8 @@ static long eval(int op, long op1, long op2)
 		
 		default: 
 			err_val = -1;
-			printf("Undefined operator\n");
-		return -1;
+			//printf("Undefined operator\n");
+		return 0;
 	}
 }
 
@@ -293,6 +285,9 @@ static long parse_prio(int prio)
 			return 0;
 		
 		lhs = eval(op - MIN_TOK, lhs, rhs);
+		
+		if(err_val)
+			return 0;
 	}
 	return lhs;
 }
@@ -305,29 +300,32 @@ static long parse_expr(void)
 int parse_arith(char *inp_string, char **end, char **buffer)
 {
 	long value;
-	brackets = err_val = tok = 0;
+	err_val = tok = 0;
 	inp = inp_string;
 	input();
 	value = parse_expr();
 	
 	if(err_val)				//Read till we get a ')'
 	{
-		while(*inp && *inp != ')')
-			inp++;
-		input();
+		*end = strchr(inp, ')');
+		if(!*end)
+			*end = inp;
+		else	end++;
 	}
-	
-	*end = inp;
-	skip(')');
-	
-	if(err_val)
-	{
-		printf("Parse error\n");
-		return -1;
-	}
-	
+	else
+	*end = prev;
+		
 	if(buffer)
+	{
+		if(err_val)
+		{
+			printf("Parse error\n");
+			*buffer = malloc(1);
+			**buffer = 0;
+			return 0;
+		}
 		return asprintf(buffer, "%ld", value);
+	}
 	return -1;
 }
 

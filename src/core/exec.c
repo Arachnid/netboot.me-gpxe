@@ -165,7 +165,7 @@ static char * expand_command ( const char *command ) {
 		if ( ! start )
 			break;
 		*start = '\0';
-		name = ( start + 2 );
+		name = ( start + 1 );
 		
 		{
 			int ret;
