@@ -1,20 +1,15 @@
-/*
- * Recursive descent arithmetic calculator:
- *   + - * / ( )
- */
-
-/*
-Ops: !, ~				(Highest)
-	*, /, %
-	+, -
-	<<, >>
-	<, <=, >, >=
-	!=, ==
-	&
-	|
-	^
-	&&
-	||				(Lowest)
+/* Recursive descent arithmetic calculator:
+ * Ops: !, ~				(Highest)
+ *	*, /, %
+ *	+, -
+ *	<<, >>
+ *	<, <=, >, >=
+ *	!=, ==
+ *	&
+ *	|
+ *	^
+ *	&&
+ *	||				(Lowest)
 */
 
 #include <ctype.h>
@@ -37,186 +32,202 @@ Ops: !, ~				(Highest)
 #define TOK_STRING	257
 #define TOK_TOTAL		20
 
-char *inp, *prev;
+#define SEP1			-1
+#define SEP2			-1, -1
+
+char *inp, *prev, *orig;
 int tok;
-int err_val;		//skip, parse_num, eval
-long tok_value;
+int err_val;
+union {
+	long num_value;
+	char *str_value;
+}tok_value;
 int brackets;
 
-char *op_table = "!@@" "~@@" "*@@" "/@@" "%@@" "+@@" "-@@" "=@@" "<@@" "<=@" "<<@" ">@@" ">=@" ">>@" "!=@"  "&@@" "|@@" "^@@" "&&@" "||@";
-char *keyword_table = " \t\v()!~*/%+-<=>&|^";			//Characters that cannot appear in a string
-signed char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 5, 5, 4, 3, 2, 1, 0 };
+/* Here is a table of the operators */
+const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
+						'<', SEP2, '<', '=', SEP1, '<', '<', SEP1, '>', SEP2, '>', '=', SEP1, '>', '>', SEP1,  '&', SEP2,
+						'|', SEP2, '^', SEP2, '&', '&', SEP1, '|', '|', SEP1, '!', '=', SEP1, '=', '=', SEP1, '\0'
+};
 
-/*
-	Changes:
-	1. Common function for all operators.
-	2. Common input function.
-	
-	Notes:
-	1. Better way to store operators of > 1 characters? I have tried to keep handling operators consistent.
-*/	
-	
-static void ignore_whitespace(void);
+const char *keyword_table = " \t\v()!~*/%+-<=>&|^";			/* Characters that cannot appear in a string */
+signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 4, 3, 2, 1, 0, 5, 5 };
 
-static void input(void) {
+static void ignore_whitespace ( void );
+static int parse_expr ( char **buffer );
+
+static void input ( void ) {
 	char t_op[3] = { '\0', '\0', '\0'};
 	char *p1, *p2;
 	size_t len;
 	
-	if(tok == -1)
+	if ( tok == -1 )
 		return;
 
 	prev = inp;
 	ignore_whitespace();
 	
-	if(*inp != '\0') {
-		if(isdigit(*inp)) {
-			tok_value = 0;
-			tok = TOK_NUMBER;
-			tok_value = strtoul(inp, &inp, 0);
+	if ( *inp == '\0' ) {
+		tok = -1;
+		return;
+	}
+	
+	/* Check for a number */
+	if ( isdigit ( *inp ) ) {
+		tok = TOK_NUMBER;
+		tok_value.num_value = strtoul ( inp, &inp, 0 );
+		return;
+	}
+	
+	/* Check for a string */
+	len = strcspn ( inp, keyword_table );
+	
+	if ( len > 0 )	{
+		inp += len;
+		tok = TOK_STRING;
+		
+		if ( ( tok_value.str_value = malloc ( len + 1 ) ) == NULL ) {
+			err_val = -ENOMEM;
 			return;
 		}
-		
-		len = strcspn(inp, keyword_table);
-		
-		if(len > 0)	{
-			char str_val[len + 1];
-			strncpy(str_val, inp, len);
-			str_val[len] = '\0';
-			if(asprintf((char **)&tok_value, "%s", str_val) < 0) {
-				err_val = -ENOMEM;
-			}
-			inp += len;
-			tok = TOK_STRING;
-			return;
-		}
-		
-		t_op[0] = *inp++;
-		p1 = strstr(op_table, t_op);
-		if(!p1) {
+		strncpy ( tok_value.str_value, inp - len, len );
+		tok_value.str_value[len] = 0;
+		return;
+	}
+	
+	/* Check for an operator */
+	t_op[0] = *inp++;
+	p1 = strstr ( op_table, t_op );
+	if ( !p1 ) {			/* The character is not present in the list of operators */
+		tok = *t_op;
+		return;
+	}
+	
+	t_op[1] = *inp;
+	p2 = strstr ( op_table, t_op );
+	if ( !p2 || p1 == p2 ) {
+		if ( ( p1 - op_table ) % 3 ) {			/* Without this, it would take '=' as '<=' */
 			tok = *t_op;
 			return;
 		}
-		t_op[1] = *inp;
-		p2 = strstr(op_table, t_op);
-		if(!p2 || p1 == p2) {
-			tok = MIN_TOK + (p1 - op_table)/3;
-			return;
-		}
-		inp++;
-		tok = MIN_TOK + (p2 - op_table)/3;
+		
+		tok = MIN_TOK + ( p1 - op_table ) / 3;
+		return;
 	}
-	else
-		tok = -1;
+	inp++;
+	tok = MIN_TOK + ( p2 - op_table ) / 3;
 }
 
-static int parse_expr(char **buffer);
+/* Check if a string is a number: "-1" and "+42" is accepted, but not "-1a". If so, place it in num and return 1 else num = 0 and return 0 */
+static int isnum ( char *string, long *num ) {
+	int flag = 0;
+	
+	*num = 0;
+	if ( *string == '+' ) {
+		string++;
+	} else if ( *string == '-' ) {
+		flag = 1;
+		string++;
+	}
+	
+	if ( *string == 0 )
+		return 0;
+	*num = strtoul ( string, &string, 0 );
+	if ( *string != 0 ) {
+		*num = 0;
+		return 0;
+	}
+	if ( flag )
+		*num = -*num;
+	return 1;
+}
 
-static void ignore_whitespace(void) {
-	while (isspace(*inp)) {
+static void ignore_whitespace ( void ) {
+	while ( isspace ( *inp ) ) {
 		inp++;
 	}
 }
 
-static int accept(int ch) {
-	if (tok == ch) {
+static int accept ( int ch ) {
+	if ( tok == ch ) {
 		input();
 		return 1;
 	}
 	return 0;
 }
 
-static void skip(int ch) {
-	if (!accept(ch)) {
+static void skip ( int ch ) {
+	if ( !accept ( ch ) ) {
 		err_val = -1;
-		printf("expected '%c', got '%c'\n", (char)ch, (char)tok);
 	}
 }
 
-static int parse_num(char **buffer) {
+static int parse_num ( char **buffer ) {
 	long num = 0;
-	int flag = 1;
-	
-	if(tok == TOK_MINUS || tok == TOK_PLUS || tok == '(' || tok == TOK_NUMBER) {
-	
-		if(accept(TOK_MINUS))				//Handle -NUM and +NUM
-			flag = -1;
-		else if(accept(TOK_PLUS)) {}
-	
-		if (accept('(')) {
-			brackets++;
-			parse_expr(buffer);
-			if(err_val)	{
-				return -1;
-			}
-			skip(')');
-			brackets--;
-			if(err_val)	{
-				free(*buffer);
-				return -1;
-			}
-			if(flag < 0) {
-				if(**buffer == '-') {
-					**buffer = '+';
-				} else {
-					char t[strlen(*buffer) + 2];
-					t[0] = '-';
-					strcpy(t + 1, *buffer);
-					free(*buffer);
-					if(asprintf(buffer, "%s", t) < 0) {
-						err_val = -ENOMEM;
-						return -ENOMEM;
-					}
-				}				
-			}
-			return strlen(*buffer);
-		}
-		if(tok == TOK_NUMBER) {
-			num = flag * tok_value;
-			input();
-			if(asprintf(buffer, "%ld", num) < 0) {
-				err_val = -ENOMEM;
-				return err_val;
-			}
-			return strlen(*buffer);
-		}
-		err_val = -1;
-		return -1;
-	}
-	
-	if (tok == TOK_STRING)	{
-		*buffer = (char *)tok_value;
-		input();
-		return strlen(*buffer);
-	}
-	err_val = -1;
-	return -1;
-}
+	int flag = 0;
 
-//"!" "~" "*" "/" "%" "+" "-" "<" "<=" "<<" ">" ">=" ">>" "!=" "==" "&" "|" "^" "&&" "||";
+	if ( tok == TOK_MINUS || tok == TOK_PLUS || tok == '(' || tok == TOK_NUMBER ) {
+	
+		if ( accept ( TOK_MINUS ) )				//Handle -NUM and +NUM
+			flag = 1;
+		else if ( accept ( TOK_PLUS ) ) {
+		}
+			
+		if ( accept ( '(' ) ) {
+			brackets++;
+			parse_expr ( buffer );
+			if ( err_val )	{
+				return ( err_val );
+			}
+			skip ( ')' );
+			brackets--;
+			if ( err_val )	{
+				free ( *buffer );
+				return (err_val );
+			}
+			if ( flag ) {
+				int t;
+				t = isnum ( *buffer, &num );
+				free ( *buffer );
+				if ( t == 0 ) {		/* Trying to do a -string, which should not be permitted */
+					return ( err_val = -4 );
+				}
+				return ( ( asprintf ( buffer, "%ld", -num )  < 0 ) ? (err_val = -ENOMEM ) : 0 );
+			}
+			return 0;
+		}
+		
+		if ( tok == TOK_NUMBER ) {
+			if ( flag )
+				tok_value.num_value = -tok_value.num_value;
+			input();
+			return ( ( asprintf ( buffer, "%ld", tok_value.num_value ) < 0) ? (err_val = -ENOMEM ) : 0 );
+		}
+		return ( err_val = -1 );
+	}
+	if ( tok == TOK_STRING ) {
+		*buffer = tok_value.str_value;
+		input();
+		return 0;
+	}
+	return ( err_val = -1 );
+}
 
 static int eval(int op, char *op1, char *op2, char **buffer) {
 	long value;
-	
+	int bothints = 1;
 	long lhs, rhs;
-	int flag1 = 0, flag2 = 0;
-	char *o1 = op1, *o2 = op2;
 	
-	if(op1 && *op1 == '-') {
-		flag1 = 1;
-		o1++;
+	if ( op1 ) {
+		if ( ! isnum ( op1, &lhs ) ) 
+			bothints = 0;
 	}
-	if(*op2 == '-') {
-		flag2 = 1;
-		o2++;
-	}
-	lhs = op1 ? strtoul(o1, NULL, 0) : 0;
-	if(flag1) {
-		lhs = -lhs;
-	}
-	rhs = strtoul(o2, NULL, 0);
-	if(flag2) {
-		rhs = -rhs;
+	
+	if ( ! isnum (op2, &rhs ) )
+		bothints = 0;
+	
+	if ( op <= 17 && ! bothints ) {
+		return ( err_val = -4 );
 	}
 	
 	switch(op)
@@ -234,7 +245,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 			if(rhs != 0)
 				value = lhs / rhs;
 			else {
-				err_val = -2;
+				return ( err_val = -2 );
 			}
 			break;
 		case 4: 
@@ -246,161 +257,180 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 		case 6: 
 			value = lhs - rhs;
 			break;
-		case 7:
-			value = !strcmp(op1, op2);
-			break;
-		case 8: 
+		case 7: 
 			value = lhs < rhs;
 			break;
-		case 9: 
+		case 8: 
 			value = lhs <= rhs;
 			break;
-		case 10: 
+		case 9: 
 			value = lhs << rhs;
 			break;
-		case 11: 
+		case 10: 
 			value = lhs > rhs;
 			break;
-		case 12: 
+		case 11: 
 			value = lhs >= rhs;
 			break;
-		case 13: 
+		case 12: 
 			value = lhs >> rhs;
 			break;
-		case 14:
-			value = strcmp(op1, op2) ? 1 : 0;
-			break;
-		case 15:
+		case 13:
 			value = lhs & rhs;
 			break;
-		case 16: 
+		case 14: 
 			value = lhs | rhs;
 			break;
-		case 17:
+		case 15:
 			value = lhs ^ rhs;
 			break;
-		case 18: 
+		case 16: 
 			value = lhs && rhs;
 			break;
-		case 19: 
+		case 17: 
 			value = lhs || rhs;
 			break;
-		
-		default: 		//This should not happen
-			*buffer = NULL;
-			err_val = -3;
-			return err_val;	
+		case 18:
+			value = strcmp ( op1, op2 ) != 0;
+			break;
+		case 19:
+			value = strcmp ( op1, op2 ) == 0;
+			break;
+		default: 		/* This means the operator is in the op_table, but not defined in this switch statement */
+			return ( err_val = -3 );
 	}
-	if(asprintf(buffer, "%ld", value) < 0) {
-		err_val = -ENOMEM;
-		return err_val;
-	}
-	return strlen(*buffer);
+	return ( ( asprintf(buffer, "%ld", value)  < 0) ? ( err_val = -ENOMEM ) : 0 );
 }
 
 static int parse_prio(int prio, char **buffer) {
 	int op;
 	char *lc, *rc;
 		
-	if(tok < MIN_TOK || tok == TOK_MINUS || tok == TOK_PLUS) {
-		parse_num(&lc);
+	if ( tok < MIN_TOK || tok == TOK_MINUS || tok == TOK_PLUS ) {
+		parse_num ( &lc );
 	} else {
-		if(tok < MIN_TOK + 2) {
+		if ( tok < MIN_TOK + 2 ) {
 			lc = NULL;
 		} else {
-			err_val = -1;
-			return -1;
+			return ( err_val = -1 );
 		}
 	}
 	
-	if(err_val) {
-		return -1;
+	if ( err_val ) {
+		return err_val;
 	}
-	while(tok != -1 && tok != ')') {
+	while( tok != -1 && tok != ')' ) {
 		long lhs;
-		if(tok < MIN_TOK) {
-			err_val = -1;
-			if(lc) free(lc);
-			return -1;
+		if ( tok < MIN_TOK ) {
+			if ( lc )
+				free(lc);
+			return ( err_val = -1 );
 		}
-		if(op_prio[tok - MIN_TOK] <= prio - (tok - MIN_TOK <= 1) ? 1 : 0) {
+		if ( op_prio[tok - MIN_TOK] <= prio - ( tok - MIN_TOK <= 1 ) ? 1 : 0 ) {
 			break;
 		}
 		
 		op  = tok;
 		input();
-		parse_prio(op_prio[op - MIN_TOK], &rc);
+		parse_prio ( op_prio[op - MIN_TOK], &rc );
 		
-		if(err_val)	{
-			if(lc) free(lc);
-			return -1;
+		if ( err_val )	{
+			if ( lc )
+				free ( lc );
+			return err_val;
 		}
 		
-		lhs = eval(op - MIN_TOK, lc, rc, buffer);
-		free(rc);
-		if(lc) free(lc);
-		if(err_val) {
-			return -1;
+		lhs = eval ( op - MIN_TOK, lc, rc, buffer );
+		free ( rc );
+		if ( lc )
+			free ( lc );
+		if ( err_val ) {
+			return err_val;
 		}
 		lc = *buffer;
-	}
+ 	}  
 	*buffer = lc;
-	return strlen(*buffer);
+	return 0;
 }
 
-static int parse_expr(char **buffer) {
-	return parse_prio(-1, buffer);
+static int parse_expr ( char **buffer ) {
+	return parse_prio ( -1, buffer );
 }
 
-int parse_arith(char *inp_string, char **end, char **buffer) {
+int parse_arith ( char *inp_string, char **end, char **buffer ) {
 	err_val = tok = 0;
-	inp = inp_string;
+	orig = inp = inp_string;
 	brackets = 0;
 	input();
 	*buffer = NULL;
 	
-	skip('(');
+	skip ( '(' );
 	brackets++;
-	parse_expr(buffer);
-	if(!err_val) {
-		skip(')');
+	parse_expr ( buffer );
+	
+	if ( !err_val ) {
+		skip ( ')' );
+		if ( err_val ) {
+			free ( *buffer );
+		}
 	}
 	
-	if(err_val)	{			//Read till we get a ')'
-		*end = strchr(inp, ')');
-		if(!*end) {
+	if ( err_val )	{			//Read till we get a ')'
+		*end = strchr ( inp, ')' );
+		if ( !*end ) {
 			*end = inp;
 		} else {
-			(*end) += 1;
+			( *end ) += 1;
 		}
-		switch (err_val) {
+		if ( tok == TOK_STRING )
+			free ( tok_value.str_value );
+		switch ( err_val ) {
 			case -1:
-				printf("parse error\n");
+				printf ( "parse error:\n%s\n", orig );
 				break;
 			case -2:
-				printf("division by 0\n");
+				printf ( "division by 0\n" );
+				break;
+			case -3:
+				printf ( "operator undefined\n" );
+				break;
+			case -4:
+				printf ( "wrong type of operand\n" );
 				break;
 			case -ENOMEM:
 				printf("out of memory\n");
 				break;
 		}
-		return -1;
+		return err_val;
 	}
 	
 	*end = prev;
-	return strlen(*buffer);
+	return strlen ( *buffer );
 }
 
 #ifdef __ARITH_TEST__
-int main(int argc, char *argv[]) {
+int main ( int argc, char *argv[] ) {
 	char *ret_val;
 	int r;
-	char *tail;
-	r = parse_arith(argv[1], &tail, &ret_val);
-	if(r < 0)
-		printf("%d  %s Tail: %s\n", r, ret_val, tail);
-	else
-		printf("%s Tail:%s\n", ret_val, tail);
+	char *head, *tail;
+	char line[100];
+	
+	while ( !feof ( stdin ) ) {
+		fgets ( line, 100, stdin );
+		if ( line[strlen ( line ) - 1] == '\n' )
+			line[strlen ( line ) - 1] = 0;
+		head = strstr ( line, "$(" );
+		if ( !head )
+			continue;
+		head++;
+		r = parse_arith ( head, &tail, &ret_val );
+		if ( r < 0 )
+			printf ( "%d  Tail: %s\n", r, tail );
+		else {
+			printf ( "%s Tail:%s\n", ret_val, tail );
+			free ( ret_val );
+		}
+	}
 	return 0;
 }
 #endif

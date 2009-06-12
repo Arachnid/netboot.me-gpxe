@@ -155,8 +155,7 @@ static char * expand_command ( const char *command ) {
 		}
 	}
 
-	while(1)
-	{
+	while ( 1 ) {
 		head = expcmd;
 
 		/* Locate opener */
@@ -172,16 +171,16 @@ static char * expand_command ( const char *command ) {
 			char *arith_res;
 			ret = parse_arith(name, &tail, &arith_res);
 			
-			if(ret < 0)
-			{
-				free(arith_res);
-				free(expcmd);
+			if(ret < 0) {
+				free ( expcmd );
 				return NULL;
 			}
 			
 			tmp = expcmd;
-			new_len = asprintf(&expcmd, "%s%s%s", head, arith_res, tail);
-			free(tmp);
+			new_len = asprintf( &expcmd, "%s%s%s", head, arith_res, tail );
+			free ( tmp );
+			if ( new_len < 0 )
+				return NULL;
 		}
 	}
 
