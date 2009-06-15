@@ -158,20 +158,19 @@ static char * expand_command ( const char *command ) {
 	while ( 1 ) {
 		head = expcmd;
 
-		/* Locate opener */
+		/* Locate opener for arithmetic expression */
 		start = strstr ( expcmd, "$(" );
 		
 		if ( ! start )
 			break;
 		*start = '\0';
 		name = ( start + 1 );
-		
 		{
 			int ret;
 			char *arith_res;
-			ret = parse_arith(name, &tail, &arith_res);
+			ret = parse_arith( name, &tail, &arith_res );
 			
-			if(ret < 0) {
+			if( ret < 0 ) {
 				free ( expcmd );
 				return NULL;
 			}
@@ -183,7 +182,6 @@ static char * expand_command ( const char *command ) {
 				return NULL;
 		}
 	}
-
 	return expcmd;
 }
 

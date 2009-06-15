@@ -42,7 +42,6 @@ union {
 	long num_value;
 	char *str_value;
 }tok_value;
-int brackets;
 
 /* Here is a table of the operators */
 const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
@@ -129,9 +128,6 @@ static int isnum ( char *string, long *num ) {
 		flag = 1;
 		string++;
 	}
-	
-	if ( *string == 0 )
-		return 0;
 	*num = strtoul ( string, &string, 0 );
 	if ( *string != 0 ) {
 		*num = 0;
@@ -174,13 +170,11 @@ static int parse_num ( char **buffer ) {
 		}
 			
 		if ( accept ( '(' ) ) {
-			brackets++;
 			parse_expr ( buffer );
 			if ( err_val )	{
 				return ( err_val );
 			}
 			skip ( ')' );
-			brackets--;
 			if ( err_val )	{
 				free ( *buffer );
 				return (err_val );
@@ -199,9 +193,11 @@ static int parse_num ( char **buffer ) {
 		
 		if ( tok == TOK_NUMBER ) {
 			if ( flag )
-				tok_value.num_value = -tok_value.num_value;
+				num = -tok_value.num_value;
+			else
+				num = tok_value.num_value;
 			input();
-			return ( ( asprintf ( buffer, "%ld", tok_value.num_value ) < 0) ? (err_val = -ENOMEM ) : 0 );
+			return ( ( asprintf ( buffer, "%ld", num ) < 0) ? (err_val = -ENOMEM ) : 0 );
 		}
 		return ( err_val = -1 );
 	}
@@ -360,28 +356,22 @@ static int parse_expr ( char **buffer ) {
 int parse_arith ( char *inp_string, char **end, char **buffer ) {
 	err_val = tok = 0;
 	orig = inp = inp_string;
-	brackets = 0;
 	input();
 	*buffer = NULL;
 	
 	skip ( '(' );
-	brackets++;
 	parse_expr ( buffer );
 	
 	if ( !err_val ) {
-		skip ( ')' );
-		if ( err_val ) {
+		
+		if ( tok != ')' ) {
 			free ( *buffer );
+			err_val = -1;
 		}
 	}
-	
+	*end = inp;
 	if ( err_val )	{			//Read till we get a ')'
-		*end = strchr ( inp, ')' );
-		if ( !*end ) {
-			*end = inp;
-		} else {
-			( *end ) += 1;
-		}
+		
 		if ( tok == TOK_STRING )
 			free ( tok_value.str_value );
 		switch ( err_val ) {
@@ -404,32 +394,36 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 		return err_val;
 	}
 	
-	*end = prev;
-	return strlen ( *buffer );
+	return 0;
 }
 
 #ifdef __ARITH_TEST__
 int main ( int argc, char *argv[] ) {
 	char *ret_val;
-	int r;
-	char *head, *tail;
+	int r = -1;
+	char *head, *tail, *string, *t;
 	char line[100];
 	
 	while ( !feof ( stdin ) ) {
 		fgets ( line, 100, stdin );
 		if ( line[strlen ( line ) - 1] == '\n' )
 			line[strlen ( line ) - 1] = 0;
-		head = strstr ( line, "$(" );
-		if ( !head )
-			continue;
-		head++;
-		r = parse_arith ( head, &tail, &ret_val );
-		if ( r < 0 )
-			printf ( "%d  Tail: %s\n", r, tail );
-		else {
-			printf ( "%s Tail:%s\n", ret_val, tail );
-			free ( ret_val );
+		asprintf ( &string, "%s", line );
+		while ( ( head = strstr ( string, "$(" ) ) != NULL ) {
+			*head++ = 0;
+			r = parse_arith ( head, &tail, &ret_val );
+			t = string;
+			if ( r == 0 ) {
+				asprintf ( &string, "%s%s%s", string, ret_val, tail );
+				free ( ret_val );
+			} else
+				break;
+			free ( t );
 		}
+		if ( r == 0 ) {
+			printf ( "Line: %s\n", string );
+		}
+		free ( string );
 	}
 	return 0;
 }
