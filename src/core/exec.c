@@ -168,7 +168,7 @@ static char * expand_command ( const char *command ) {
 		{
 			int ret;
 			char *arith_res;
-			ret = parse_arith( name, &tail, &arith_res );
+			ret = parse_arith ( name, &tail, &arith_res );
 			
 			if( ret < 0 ) {
 				free ( expcmd );
@@ -176,7 +176,7 @@ static char * expand_command ( const char *command ) {
 			}
 			
 			tmp = expcmd;
-			new_len = asprintf( &expcmd, "%s%s%s", head, arith_res, tail );
+			new_len = asprintf ( &expcmd, "%s%s%s", head, arith_res, tail );
 			free ( tmp );
 			if ( new_len < 0 )
 				return NULL;

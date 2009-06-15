@@ -35,6 +35,18 @@
 #define SEP1			-1
 #define SEP2			-1, -1
 
+#ifndef __ARITH_TEST__
+#define EPARSE		EUNIQ_01
+#define EDIV0			EUNIQ_02
+#define ENOOP		EUNIQ_03
+#define EWRONGOP	EUNIQ_04
+#else
+#define EPARSE		1
+#define EDIV0			2
+#define ENOOP		3
+#define EWRONGOP	4
+#endif
+
 char *inp, *prev, *orig;
 int tok;
 int err_val;
@@ -154,7 +166,7 @@ static int accept ( int ch ) {
 
 static void skip ( int ch ) {
 	if ( !accept ( ch ) ) {
-		err_val = -1;
+		err_val = -EPARSE;
 	}
 }
 
@@ -184,7 +196,7 @@ static int parse_num ( char **buffer ) {
 				t = isnum ( *buffer, &num );
 				free ( *buffer );
 				if ( t == 0 ) {		/* Trying to do a -string, which should not be permitted */
-					return ( err_val = -4 );
+					return ( err_val = -EWRONGOP );
 				}
 				return ( ( asprintf ( buffer, "%ld", -num )  < 0 ) ? (err_val = -ENOMEM ) : 0 );
 			}
@@ -199,14 +211,14 @@ static int parse_num ( char **buffer ) {
 			input();
 			return ( ( asprintf ( buffer, "%ld", num ) < 0) ? (err_val = -ENOMEM ) : 0 );
 		}
-		return ( err_val = -1 );
+		return ( err_val = -EPARSE );
 	}
 	if ( tok == TOK_STRING ) {
 		*buffer = tok_value.str_value;
 		input();
 		return 0;
 	}
-	return ( err_val = -1 );
+	return ( err_val = -EPARSE );
 }
 
 static int eval(int op, char *op1, char *op2, char **buffer) {
@@ -223,7 +235,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 		bothints = 0;
 	
 	if ( op <= 17 && ! bothints ) {
-		return ( err_val = -4 );
+		return ( err_val = -EWRONGOP );
 	}
 	
 	switch(op)
@@ -241,7 +253,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 			if(rhs != 0)
 				value = lhs / rhs;
 			else {
-				return ( err_val = -2 );
+				return ( err_val = -EDIV0 );
 			}
 			break;
 		case 4: 
@@ -293,7 +305,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 			value = strcmp ( op1, op2 ) == 0;
 			break;
 		default: 		/* This means the operator is in the op_table, but not defined in this switch statement */
-			return ( err_val = -3 );
+			return ( err_val = -ENOOP );
 	}
 	return ( ( asprintf(buffer, "%ld", value)  < 0) ? ( err_val = -ENOMEM ) : 0 );
 }
@@ -308,7 +320,7 @@ static int parse_prio(int prio, char **buffer) {
 		if ( tok < MIN_TOK + 2 ) {
 			lc = NULL;
 		} else {
-			return ( err_val = -1 );
+			return ( err_val = -EPARSE );
 		}
 	}
 	
@@ -320,7 +332,7 @@ static int parse_prio(int prio, char **buffer) {
 		if ( tok < MIN_TOK ) {
 			if ( lc )
 				free(lc);
-			return ( err_val = -1 );
+			return ( err_val = -EPARSE );
 		}
 		if ( op_prio[tok - MIN_TOK] <= prio - ( tok - MIN_TOK <= 1 ) ? 1 : 0 ) {
 			break;
@@ -366,7 +378,7 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 		
 		if ( tok != ')' ) {
 			free ( *buffer );
-			err_val = -1;
+			err_val = -EPARSE;
 		}
 	}
 	*end = inp;
@@ -375,23 +387,23 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 		if ( tok == TOK_STRING )
 			free ( tok_value.str_value );
 		switch ( err_val ) {
-			case -1:
+			case -EPARSE:
 				printf ( "parse error:\n%s\n", orig );
 				break;
-			case -2:
+			case -EDIV0:
 				printf ( "division by 0\n" );
 				break;
-			case -3:
+			case -ENOOP:
 				printf ( "operator undefined\n" );
 				break;
-			case -4:
+			case -EWRONGOP:
 				printf ( "wrong type of operand\n" );
 				break;
 			case -ENOMEM:
 				printf("out of memory\n");
 				break;
 		}
-		return err_val;
+		return - ( EINVAL | -err_val );
 	}
 	
 	return 0;
@@ -400,7 +412,7 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 #ifdef __ARITH_TEST__
 int main ( int argc, char *argv[] ) {
 	char *ret_val;
-	int r = -1;
+	int r = 0;
 	char *head, *tail, *string, *t;
 	char line[100];
 	
