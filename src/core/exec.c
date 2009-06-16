@@ -111,7 +111,7 @@ static char * expand_command ( const char *command ) {
 	expcmd = strdup ( command );	
 	if ( ! expcmd )
 		return NULL;
-
+#if 1
 	/* Expand while expansions remain */
 	while ( 1 ) {
 
@@ -183,6 +183,89 @@ static char * expand_command ( const char *command ) {
 		}
 	}
 	return expcmd;
+#else
+	
+	head = expcmd;
+	while ( *head ) {
+		switch ( *head ) {
+			case '\'':
+				tail = strchr ( head + 1, '\'' );
+				if ( tail )
+					head = tail;
+				else
+					printf ( "No end \'\n" );
+				head++;
+				break;
+			case '$':
+				if ( head[1] == '{' ) {
+					*head = '\0';
+					name = ( head + 2 );
+
+					/* Locate closer */
+					end = strstr ( name, "}" );
+					if ( ! end )
+						break;
+					*end = '\0';
+					tail = ( end + 1 );
+		
+					/* Determine setting length */
+					setting_len = fetchf_named_setting ( name, NULL, 0 );
+					if ( setting_len < 0 )
+						setting_len = 0; /* Treat error as empty setting */
+
+					/* Read setting into temporary buffer */
+					{
+						char setting_buf[ setting_len + 1 ];
+
+						setting_buf[0] = '\0';
+						fetchf_named_setting ( name, setting_buf,
+						sizeof ( setting_buf ) );
+
+						/* Construct expanded string and discard old string */
+						tmp = expcmd;
+						new_len = asprintf ( &expcmd, "%s%s%s",
+						expcmd, setting_buf, tail );
+						free ( tmp );
+						if ( new_len < 0 )
+							return NULL;
+					}
+					head = tail;
+				}
+				else if ( head[1] == '(' ) {
+					*head = '\0';
+					name = ( head + 1 );
+					{
+						int ret;
+						char *arith_res;
+						ret = parse_arith ( name, &tail, &arith_res );
+			
+						if( ret < 0 ) {
+							free ( expcmd );
+							return NULL;
+						}
+			
+						tmp = expcmd;
+						new_len = asprintf ( &expcmd, "%s%s%s", expcmd, arith_res, tail );
+						free ( tmp );
+						if ( new_len < 0 )
+							return NULL;
+						head = tail;
+					}
+				} else
+					head++;
+				
+				break;
+				
+				case '\\':
+					if ( head[1] )
+						head += 2;
+					break; 
+			default:
+				head++;
+		}
+	}
+	return expcmd;
+	#endif
 }
 
 /**
@@ -197,8 +280,85 @@ static char * expand_command ( const char *command ) {
  * replaced with NULs.
  */
 static int split_args ( char *args, char * argv[] ) {
+	
 	int argc = 0;
-
+	
+#if 0
+	int in_q = 0;
+		/* Skip over any whitespace / convert to NUL */
+	while ( *args == ' ' ) {
+		if ( argv )
+			*args = '\0';
+		args++;
+	}
+	if ( !*args )
+		return argc;
+	if ( argv )
+		argv[argc] = args;
+	argc++;
+		/* Skip to start of next whitespace, if any */
+	while ( *args ) {
+		char *t;
+		switch ( *args ) {
+			case '\'':
+				t = strchr ( args + 1, '\'' );
+				if ( t ) {
+					if ( args ) {
+						memmove ( args, args + 1, t - args - 1 );
+						memmove ( t - 1, t + 1, strlen ( t + 1 ) + 1 );
+						args += t - args - 1 ;
+					} else
+						args = t + 1;
+				}
+				break;
+			case '"':
+				in_q ^= 1;
+				printf ( "Quotes found. in_q = %d\n", in_q );
+				if ( argv ) {
+					memmove ( args, args + 1, strlen ( args + 1 ) + 1 );
+				} else
+					args++;
+				break;
+			case '\\':
+				switch ( args[1] ) {
+					case 0:
+						break;
+					case '\n':
+						if ( argv )
+							memmove ( args, args + 2, strlen ( args + 2 ) + 1 );
+						else
+							args += 3;
+						break;
+					default:
+						if ( argv ) {
+							memmove ( args, args + 1, strlen ( args + 1 ) + 1 );
+							args++;
+						}
+						else
+							args += 2;
+					}
+				break;
+			case ' ':
+				if ( in_q ) {
+					args++;
+					break;
+				}
+				while ( *args == ' ' ) {
+					if ( argv )
+						*args = '\0';
+					args++;
+				}
+				if ( args && argv )
+					argv[argc] = args;
+				//printf ( "Div at %s\n", args );
+				argc++;
+				break;
+			default:
+				args++;
+		}
+	}
+	return argc;
+#else
 	while ( 1 ) {
 		/* Skip over any whitespace / convert to NUL */
 		while ( isspace ( *args ) ) {
@@ -219,6 +379,9 @@ static int split_args ( char *args, char * argv[] ) {
 		}
 	}
 	return argc;
+
+
+#endif
 }
 
 /**
@@ -247,6 +410,11 @@ int system ( const char *command ) {
 		char * argv[argc + 1];
 		
 		split_args ( args, argv );
+		
+		for ( rc = 0; rc < argc; rc++) {
+			printf ( "\"%s\" ", argv[rc] );
+		}
+		
 		argv[argc] = NULL;
 
 		if ( argv[0][0] != '#' )
