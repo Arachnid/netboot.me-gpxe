@@ -31,6 +31,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/command.h>
 #include <gpxe/settings.h>
 
+#include <lib.h>
 /** @file
  *
  * Command execution
@@ -85,52 +86,66 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-int parse_arith(char *inp_string, char **end, char **buffer);
+struct argument {
+	char *word;
+	struct argument *next;
+};
 
-/**
- * Expand variables within command line
- *
- * @v command		Command line
- * @ret expcmd		Expanded command line
- *
- * The expanded command line is allocated with malloc() and the caller
- * must eventually free() it.
- */
-static char * expand_command ( const char *command ) {
-	char *expcmd;
-	char *start;
-	char *end;
+int parse_arith(char *inp_string, char **end, char **buffer);
+char * parse_dquote ( char *inp, char **end );
+
+char * dollar_expand ( char *inp );
+
+char * parse_dquote ( char *inp, char **end ) {
 	char *head;
+	char *expquote;
+	char *var;
+	char *tmp;
+	expquote = strdup ( inp );
+	head = expquote;
+	
+	while ( *head && *head != '"' ) {
+		switch ( *head ) {
+			case '\\':
+				if ( head[1] ) {
+					if ( head[1] != '\n' ) {
+						memmove ( head, head + 1, strlen ( head + 1 ) + 1 );
+						head++;
+					} else {
+						memmove ( head, head + 2, strlen ( head + 2 ) + 1 );
+					}
+				}
+				break;
+			case '$':
+				var = dollar_expand ( head );
+				tmp = expquote;
+				asprintf ( &expquote, "%s%s", expquote, var );
+				head = expquote + ( head - tmp );
+				free ( tmp );
+				break;
+			default:
+				head++;
+		}
+	}
+	*end = head;
+	return expquote;
+}
+
+char * dollar_expand ( char *inp ) {
+	char *expdollar;
 	char *name;
-	char *tail;
+	char *end;
 	int setting_len;
 	int new_len;
-	char *tmp;
-
-	/* Obtain temporary modifiable copy of command line */
-	expcmd = strdup ( command );	
-	if ( ! expcmd )
-		return NULL;
-#if 1
-	/* Expand while expansions remain */
-	while ( 1 ) {
-
-		head = expcmd;
-
-		/* Locate opener */
-		start = strstr ( expcmd, "${" );
-		
-		if ( ! start )
-			break;
-		*start = '\0';
-		name = ( start + 2 );
+	if ( inp[1] == '{' ) {
+		*inp = 0;
+		name = ( inp + 2 );
 
 		/* Locate closer */
 		end = strstr ( name, "}" );
 		if ( ! end )
-			break;
-		*end = '\0';
-		tail = ( end + 1 );
+			return NULL;
+		*end++ = '\0';
 		
 		/* Determine setting length */
 		setting_len = fetchf_named_setting ( name, NULL, 0 );
@@ -146,126 +161,128 @@ static char * expand_command ( const char *command ) {
 					       sizeof ( setting_buf ) );
 
 			/* Construct expanded string and discard old string */
-			tmp = expcmd;
-			new_len = asprintf ( &expcmd, "%s%s%s",
-					     head, setting_buf, tail );
-			free ( tmp );
+			new_len = asprintf ( &expdollar, "%s%s", setting_buf, end );
 			if ( new_len < 0 )
 				return NULL;
 		}
-	}
-
-	while ( 1 ) {
-		head = expcmd;
-
-		/* Locate opener for arithmetic expression */
-		start = strstr ( expcmd, "$(" );
-		
-		if ( ! start )
-			break;
-		*start = '\0';
-		name = ( start + 1 );
+	} else if ( inp[1] == '(' ) {
+		*inp = 0;
+		name = ( inp + 1 );
 		{
 			int ret;
 			char *arith_res;
-			ret = parse_arith ( name, &tail, &arith_res );
+			ret = parse_arith ( name, &end, &arith_res );
 			
 			if( ret < 0 ) {
-				free ( expcmd );
 				return NULL;
 			}
 			
-			tmp = expcmd;
-			new_len = asprintf ( &expcmd, "%s%s%s", head, arith_res, tail );
-			free ( tmp );
+			new_len = asprintf ( &expdollar, "%s%s", arith_res, end );
 			if ( new_len < 0 )
 				return NULL;
 		}
 	}
-	return expcmd;
-#else
+	return expdollar;	
+}
+
+/**
+ * Expand variables within command line
+ *
+ * @v command		Command line
+ * @ret expcmd		Expanded command line
+ *
+ * The expanded command line is allocated with malloc() and the caller
+ * must eventually free() it.
+ */
+int expand_command ( const char *command, struct argument **argv_start ) {
+	char *expcmd;
+	char *start;
+	char *head;
+	//char *name;
+	//char *tail;
+	//int setting_len;
+	//int new_len;
+	char *tmp;
+	char *var;
+	struct argument *argv;
+	int argc = 0;
+
+	/* Obtain temporary modifiable copy of command line */
+	expcmd = strdup ( command );	
+	if ( ! expcmd )
+		return 0;
 	
+	*argv_start = malloc ( sizeof ( struct argument ) );
+	if ( !*argv_start )
+		return 0;
+	argv = *argv_start;
+	/* Expand while expansions remain */
 	head = expcmd;
+	while ( isspace ( *head ) )
+		head++;
+	start = head;
 	while ( *head ) {
 		switch ( *head ) {
-			case '\'':
-				tail = strchr ( head + 1, '\'' );
-				if ( tail )
-					head = tail;
-				else
-					printf ( "No end \'\n" );
-				head++;
+			case '\\':
+				if ( head[1] ) {
+					if ( head[1] != '\n' ) {
+						memmove ( head, head + 1, strlen ( head + 1 ) + 1 );
+						head++;
+					} else {
+						memmove ( head, head + 2, strlen ( head + 2 ) + 1 );
+					}
+				}
 				break;
 			case '$':
-				if ( head[1] == '{' ) {
-					*head = '\0';
-					name = ( head + 2 );
-
-					/* Locate closer */
-					end = strstr ( name, "}" );
-					if ( ! end )
-						break;
-					*end = '\0';
-					tail = ( end + 1 );
-		
-					/* Determine setting length */
-					setting_len = fetchf_named_setting ( name, NULL, 0 );
-					if ( setting_len < 0 )
-						setting_len = 0; /* Treat error as empty setting */
-
-					/* Read setting into temporary buffer */
-					{
-						char setting_buf[ setting_len + 1 ];
-
-						setting_buf[0] = '\0';
-						fetchf_named_setting ( name, setting_buf,
-						sizeof ( setting_buf ) );
-
-						/* Construct expanded string and discard old string */
-						tmp = expcmd;
-						new_len = asprintf ( &expcmd, "%s%s%s",
-						expcmd, setting_buf, tail );
-						free ( tmp );
-						if ( new_len < 0 )
-							return NULL;
-					}
-					head = tail;
-				}
-				else if ( head[1] == '(' ) {
-					*head = '\0';
-					name = ( head + 1 );
-					{
-						int ret;
-						char *arith_res;
-						ret = parse_arith ( name, &tail, &arith_res );
-			
-						if( ret < 0 ) {
-							free ( expcmd );
-							return NULL;
-						}
-			
-						tmp = expcmd;
-						new_len = asprintf ( &expcmd, "%s%s%s", expcmd, arith_res, tail );
-						free ( tmp );
-						if ( new_len < 0 )
-							return NULL;
-						head = tail;
-					}
-				} else
+				var = dollar_expand ( head );
+				tmp = expcmd;
+				asprintf ( &expcmd, "%s%s", expcmd, var );
+				head = expcmd + ( head - tmp );
+				start = expcmd + ( start - tmp );
+				free ( tmp );
+				break;
+			case '"':
+				var = parse_dquote ( head, &head );
+				tmp = expcmd;
+				asprintf ( &expcmd, "%s%s", expcmd, var );
+				head = expcmd + ( head - tmp );
+				start = expcmd + ( head - tmp );
+				free ( tmp );
+				break;
+			case '\'':
+				tmp = strchr ( head + 1, '\'' );
+				memmove ( head, head + 1, tmp - head - 1 );
+				memmove ( tmp - 1, tmp + 1, strlen ( tmp + 1 ) + 1 );
+				head = tmp - 1;
+				break;
+			case ' ':
+			case '\t':
+				argv -> word = malloc ( head - start + 1 );
+				strncpy ( argv -> word, start, head - start );
+				argv -> word[head - start] = 0;
+				argv -> next = malloc ( sizeof ( struct  argument ) ) ;
+				while ( isspace ( *head ) )
 					head++;
 				
+				printf ( "argv: %s %s\n", start, argv -> word );
+				argv = argv -> next;
+				start = head;
+				printf ( "next: %s\n", start );
+				argc++;
 				break;
-				
-				case '\\':
-					if ( head[1] )
-						head += 2;
-					break; 
 			default:
 				head++;
 		}
 	}
-	return expcmd;
-	#endif
+	if ( start != head ) {
+		argv -> word = strdup ( start );
+		argv -> next = NULL;
+		argc++;
+	}
+	else {
+		free ( argv );
+	}
+	return argc;
 }
 
 /**
@@ -279,86 +296,10 @@ static char * expand_command ( const char *command ) {
  * argv is non-NULL, any whitespace in the command line will be
  * replaced with NULs.
  */
-static int split_args ( char *args, char * argv[] ) {
-	
-	int argc = 0;
-	
 #if 0
-	int in_q = 0;
-		/* Skip over any whitespace / convert to NUL */
-	while ( *args == ' ' ) {
-		if ( argv )
-			*args = '\0';
-		args++;
-	}
-	if ( !*args )
-		return argc;
-	if ( argv )
-		argv[argc] = args;
-	argc++;
-		/* Skip to start of next whitespace, if any */
-	while ( *args ) {
-		char *t;
-		switch ( *args ) {
-			case '\'':
-				t = strchr ( args + 1, '\'' );
-				if ( t ) {
-					if ( args ) {
-						memmove ( args, args + 1, t - args - 1 );
-						memmove ( t - 1, t + 1, strlen ( t + 1 ) + 1 );
-						args += t - args - 1 ;
-					} else
-						args = t + 1;
-				}
-				break;
-			case '"':
-				in_q ^= 1;
-				printf ( "Quotes found. in_q = %d\n", in_q );
-				if ( argv ) {
-					memmove ( args, args + 1, strlen ( args + 1 ) + 1 );
-				} else
-					args++;
-				break;
-			case '\\':
-				switch ( args[1] ) {
-					case 0:
-						break;
-					case '\n':
-						if ( argv )
-							memmove ( args, args + 2, strlen ( args + 2 ) + 1 );
-						else
-							args += 3;
-						break;
-					default:
-						if ( argv ) {
-							memmove ( args, args + 1, strlen ( args + 1 ) + 1 );
-							args++;
-						}
-						else
-							args += 2;
-					}
-				break;
-			case ' ':
-				if ( in_q ) {
-					args++;
-					break;
-				}
-				while ( *args == ' ' ) {
-					if ( argv )
-						*args = '\0';
-					args++;
-				}
-				if ( args && argv )
-					argv[argc] = args;
-				//printf ( "Div at %s\n", args );
-				argc++;
-				break;
-			default:
-				args++;
-		}
-	}
-	return argc;
-#else
+static int split_args ( char *args, char * argv[] ) {
+	int argc = 0;
+
 	while ( 1 ) {
 		/* Skip over any whitespace / convert to NUL */
 		while ( isspace ( *args ) ) {
@@ -379,11 +320,8 @@ static int split_args ( char *args, char * argv[] ) {
 		}
 	}
 	return argc;
-
-
-#endif
 }
-
+#endif
 /**
  * Execute command line
  *
@@ -393,10 +331,13 @@ static int split_args ( char *args, char * argv[] ) {
  * Execute the named command and arguments.
  */
 int system ( const char *command ) {
-	char *args;
+	//char *args;
 	int argc;
 	int rc = 0;
-
+	int i;
+	struct argument *argv_start;
+	struct argument *arg;
+#if 0
 	/* Perform variable expansion */
 	args = expand_command ( command );
 	if ( ! args )
@@ -410,11 +351,6 @@ int system ( const char *command ) {
 		char * argv[argc + 1];
 		
 		split_args ( args, argv );
-		
-		for ( rc = 0; rc < argc; rc++) {
-			printf ( "\"%s\" ", argv[rc] );
-		}
-		
 		argv[argc] = NULL;
 
 		if ( argv[0][0] != '#' )
@@ -422,6 +358,20 @@ int system ( const char *command ) {
 	}
 
 	free ( args );
+#endif
+	argc = expand_command ( command, &argv_start );
+	arg = argv_start;
+	{
+		char *argv[argc + 1];
+		for ( i = 0; i < argc; i++ ) {
+			argv[i] = arg -> word;
+			arg = arg -> next;
+			printf ( "argv[%d] = %s\n", i, argv[i] );
+		}
+		argv[i] = NULL;
+		if ( argv[0][0] != '#' )
+			rc = execv ( argv[0], argv );	
+	}
 	return rc;
 }
 
