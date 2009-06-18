@@ -36,10 +36,10 @@
 #define SEP2			-1, -1
 
 #ifndef __ARITH_TEST__
-#define EPARSE		EUNIQ_01
-#define EDIV0			EUNIQ_02
-#define ENOOP		EUNIQ_03
-#define EWRONGOP	EUNIQ_04
+#define EPARSE		(EINVAL | EUNIQ_01)
+#define EDIV0			(EINVAL | EUNIQ_02)
+#define ENOOP		(EINVAL | EUNIQ_03)
+#define EWRONGOP	(EINVAL | EUNIQ_04)
 #else
 #define EPARSE		1
 #define EDIV0			2
@@ -47,29 +47,34 @@
 #define EWRONGOP	4
 #endif
 
-char *inp, *prev, *orig;
-int tok;
-int err_val;
-union {
+static char *inp, *prev, *orig;
+static int tok;
+static int err_val;
+static union {
 	long num_value;
 	char *str_value;
 }tok_value;
 
 /* Here is a table of the operators */
-const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
+static const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
 						'<', SEP2, '<', '=', SEP1, '<', '<', SEP1, '>', SEP2, '>', '=', SEP1, '>', '>', SEP1,  '&', SEP2,
 						'|', SEP2, '^', SEP2, '&', '&', SEP1, '|', '|', SEP1, '!', '=', SEP1, '=', '=', SEP1, '\0'
 };
 
-const char *keyword_table = " \t\v()!~*/%+-<=>&|^";			/* Characters that cannot appear in a string */
-signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 4, 3, 2, 1, 0, 5, 5 };
+static const char *keyword_table = " \t\v()'\"$!~*/%+-<=>&|^";			/* Characters that cannot appear in a string */
+static signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 4, 3, 2, 1, 0, 5, 5 };
 
 static void ignore_whitespace ( void );
 static int parse_expr ( char **buffer );
 
+char * dollar_expand ( char *inp, char **end );
+char * parse_dquote ( char *inp, char **end );
+
+	
 static void input ( void ) {
 	char t_op[3] = { '\0', '\0', '\0'};
 	char *p1, *p2;
+	char *strtmp = NULL, *tmp;
 	size_t len;
 	
 	if ( tok == -1 )
@@ -82,27 +87,94 @@ static void input ( void ) {
 		tok = -1;
 		return;
 	}
+	tok = 0;
+	while ( 1 ) {			/* Look for a string first */
+		
+		if ( *inp == '$' ) {
+			char *var, *tail;
+			int new_len;
+			var = dollar_expand( inp, &tail );
+			tmp = orig;
+			new_len = asprintf ( &orig, "%s%s%s", orig, var, tail );
+			inp = orig + ( inp - tmp );
+			free ( tmp );
+			free ( var );
+			if ( new_len < 0 ) {
+				tok = -1;
+				err_val = -ENOMEM;
+				return;
+			}
+		}
+		
+		if ( isdigit ( *inp ) ) 
+			break;
+		
+		/* Check for a string */
+		len = strcspn ( inp, keyword_table );
+	
+		if ( len > 0 )	{
+			inp += len;
+		
+			if ( ( strtmp = malloc ( len + 1 ) ) == NULL ) {
+				tok = -1;
+				err_val = -ENOMEM;
+				return;
+			}
+			strncpy ( strtmp, inp - len, len );
+			strtmp[len] = 0;
+		} else if ( *inp == '\'' ) {
+			char *end;
+			end = strchr ( inp + 1, '\'' );
+			if ( ( strtmp = malloc ( end - inp ) ) == NULL ) {
+				tok = -1;
+				err_val = -ENOMEM;
+				return;
+			}
+			strncpy ( strtmp, inp + 1, end - inp - 1 );
+			strtmp[end - inp] = 0;
+			inp = end + 1;
+		} else if ( *inp == '"' ) {
+			int new_len;
+			strtmp = parse_dquote ( inp, &inp );
+			if ( !strtmp ) {
+				tok = -1;
+				err_val = -ENOMEM;
+				return;
+			}
+			tmp = orig;
+			new_len = asprintf ( &orig, "%s%s%s", orig, strtmp, inp );
+			free ( tmp );
+			if ( new_len < 0 ) {
+				free ( strtmp );
+				err_val = -ENOMEM;
+				return;
+			}
+		} else
+			break;
+		
+		if ( tok == TOK_STRING ) {
+			int new_len;
+			tmp = tok_value.str_value;
+			new_len = asprintf ( &tok_value.str_value, "%s%s", tok_value.str_value, strtmp );
+			free ( tmp );
+			if ( new_len < 0 ) {
+				err_val = -ENOMEM;
+				return;
+			}	
+		} else {
+			tok_value.str_value = strtmp;
+			tok = TOK_STRING;
+		}
+	}
+	
+	if ( tok ) {
+		return;
+	}
 	
 	/* Check for a number */
 	if ( isdigit ( *inp ) ) {
 		tok = TOK_NUMBER;
 		tok_value.num_value = strtoul ( inp, &inp, 0 );
-		return;
-	}
-	
-	/* Check for a string */
-	len = strcspn ( inp, keyword_table );
-	
-	if ( len > 0 )	{
-		inp += len;
-		tok = TOK_STRING;
-		
-		if ( ( tok_value.str_value = malloc ( len + 1 ) ) == NULL ) {
-			err_val = -ENOMEM;
-			return;
-		}
-		strncpy ( tok_value.str_value, inp - len, len );
-		tok_value.str_value[len] = 0;
 		return;
 	}
 	
@@ -127,6 +199,8 @@ static void input ( void ) {
 	}
 	inp++;
 	tok = MIN_TOK + ( p2 - op_table ) / 3;
+	return;
+
 }
 
 /* Check if a string is a number: "-1" and "+42" is accepted, but not "-1a". If so, place it in num and return 1 else num = 0 and return 0 */
@@ -367,7 +441,8 @@ static int parse_expr ( char **buffer ) {
 
 int parse_arith ( char *inp_string, char **end, char **buffer ) {
 	err_val = tok = 0;
-	orig = inp = inp_string;
+	orig = strdup ( inp_string );
+	inp = orig;
 	input();
 	*buffer = NULL;
 	
@@ -403,7 +478,7 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 				printf("out of memory\n");
 				break;
 		}
-		return - ( EINVAL | -err_val );
+		return err_val;
 	}
 	
 	return 0;

@@ -94,18 +94,25 @@ struct argument {
 int parse_arith(char *inp_string, char **end, char **buffer);
 char * parse_dquote ( char *inp, char **end );
 
-char * dollar_expand ( char *inp );
+char * dollar_expand ( char *inp, char **end );
 
 char * parse_dquote ( char *inp, char **end ) {
 	char *head;
 	char *expquote;
 	char *var;
 	char *tmp;
-	expquote = strdup ( inp );
+	int new_len;
+	
+	*inp = 0;
+	expquote = strdup ( inp + 1 );
 	head = expquote;
 	
-	while ( *head && *head != '"' ) {
+	while ( *head ) {
 		switch ( *head ) {
+			case '"':
+				*head = 0;
+				*end = head + 1;
+				return expquote;
 			case '\\':
 				if ( head[1] ) {
 					if ( head[1] != '\n' ) {
@@ -117,35 +124,46 @@ char * parse_dquote ( char *inp, char **end ) {
 				}
 				break;
 			case '$':
-				var = dollar_expand ( head );
+				var = dollar_expand ( head, &tmp );
+				if ( !tmp || !var ) {
+					*end = NULL;
+					free ( expquote );
+					return NULL;
+				}
+				head = tmp;
 				tmp = expquote;
-				asprintf ( &expquote, "%s%s", expquote, var );
-				head = expquote + ( head - tmp );
+				new_len = asprintf ( &expquote, "%s%s%s", expquote, var, head );
+				head = expquote + strlen ( tmp ) + strlen ( var );
+				free ( var );
 				free ( tmp );
+				if ( new_len < 0 )
+					return NULL;
 				break;
 			default:
 				head++;
 		}
 	}
+	printf ( "end of string while looking for \"\n" );
+	free ( expquote );
 	*end = head;
-	return expquote;
+	return NULL;
 }
 
-char * dollar_expand ( char *inp ) {
-	char *expdollar;
+char * dollar_expand ( char *inp, char **end ) {
+	char *expdollar = NULL;
 	char *name;
-	char *end;
 	int setting_len;
-	int new_len;
+	//int new_len;
 	if ( inp[1] == '{' ) {
 		*inp = 0;
 		name = ( inp + 2 );
 
 		/* Locate closer */
-		end = strstr ( name, "}" );
-		if ( ! end )
+		*end = strstr ( name, "}" );
+		if ( ! *end )
 			return NULL;
-		*end++ = '\0';
+		**end = '\0';
+		*end += 1;
 		
 		/* Determine setting length */
 		setting_len = fetchf_named_setting ( name, NULL, 0 );
@@ -154,16 +172,12 @@ char * dollar_expand ( char *inp ) {
 
 		/* Read setting into temporary buffer */
 		{
-			char setting_buf[ setting_len + 1 ];
+			char *setting_buf = malloc ( setting_len + 1 );
 
 			setting_buf[0] = '\0';
 			fetchf_named_setting ( name, setting_buf,
-					       sizeof ( setting_buf ) );
-
-			/* Construct expanded string and discard old string */
-			new_len = asprintf ( &expdollar, "%s%s", setting_buf, end );
-			if ( new_len < 0 )
-				return NULL;
+					       setting_len + 1 );
+			return setting_buf;
 		}
 	} else if ( inp[1] == '(' ) {
 		*inp = 0;
@@ -171,15 +185,13 @@ char * dollar_expand ( char *inp ) {
 		{
 			int ret;
 			char *arith_res;
-			ret = parse_arith ( name, &end, &arith_res );
+			ret = parse_arith ( name, end, &arith_res );
 			
 			if( ret < 0 ) {
 				return NULL;
 			}
 			
-			new_len = asprintf ( &expdollar, "%s%s", arith_res, end );
-			if ( new_len < 0 )
-				return NULL;
+			return arith_res;
 		}
 	}
 	return expdollar;	
@@ -199,9 +211,9 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 	char *start;
 	char *head;
 	//char *name;
-	//char *tail;
+	char *tail;
 	//int setting_len;
-	//int new_len;
+	int new_len;
 	char *tmp;
 	char *var;
 	struct argument *argv;
@@ -210,11 +222,11 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 	/* Obtain temporary modifiable copy of command line */
 	expcmd = strdup ( command );	
 	if ( ! expcmd )
-		return 0;
+		return -ENOMEM;
 	
 	*argv_start = malloc ( sizeof ( struct argument ) );
 	if ( !*argv_start )
-		return 0;
+		return -ENOMEM;
 	argv = *argv_start;
 	/* Expand while expansions remain */
 	head = expcmd;
@@ -234,20 +246,32 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 				}
 				break;
 			case '$':
-				var = dollar_expand ( head );
+				var = dollar_expand ( head, &tail );
 				tmp = expcmd;
-				asprintf ( &expcmd, "%s%s", expcmd, var );
+				new_len = asprintf ( &expcmd, "%s%s%s", expcmd, var, tail );
 				head = expcmd + ( head - tmp );
 				start = expcmd + ( start - tmp );
 				free ( tmp );
+				if ( new_len < 0 ) {
+					goto out_of_memory;
+				}
 				break;
 			case '"':
-				var = parse_dquote ( head, &head );
+				var = parse_dquote ( head, &tmp );
+				if ( !var )
+					break;
+				head = tmp;
 				tmp = expcmd;
-				asprintf ( &expcmd, "%s%s", expcmd, var );
-				head = expcmd + ( head - tmp );
-				start = expcmd + ( head - tmp );
+				new_len = asprintf ( &expcmd, "%s%s%s", expcmd, var, head );
+				
+				start = expcmd + ( start - tmp );
+				head = expcmd + strlen ( tmp ) + strlen ( var );
+				free ( var );
 				free ( tmp );
+				
+				if ( new_len < 0 )
+					goto out_of_memory;
+				
 				break;
 			case '\'':
 				tmp = strchr ( head + 1, '\'' );
@@ -261,13 +285,12 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 				strncpy ( argv -> word, start, head - start );
 				argv -> word[head - start] = 0;
 				argv -> next = malloc ( sizeof ( struct  argument ) ) ;
+				argv -> next -> next = NULL;
 				while ( isspace ( *head ) )
 					head++;
 				
-				printf ( "argv: %s %s\n", start, argv -> word );
 				argv = argv -> next;
 				start = head;
-				printf ( "next: %s\n", start );
 				argc++;
 				break;
 			default:
@@ -283,45 +306,17 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 		free ( argv );
 	}
 	return argc;
-}
-
-/**
- * Split command line into argv array
- *
- * @v args		Command line
- * @v argv		Argument array to populate, or NULL
- * @ret argc		Argument count
- *
- * Splits the command line into whitespace-delimited arguments.  If @c
- * argv is non-NULL, any whitespace in the command line will be
- * replaced with NULs.
- */
-#if 0
-static int split_args ( char *args, char * argv[] ) {
-	int argc = 0;
-
-	while ( 1 ) {
-		/* Skip over any whitespace / convert to NUL */
-		while ( isspace ( *args ) ) {
-			if ( argv )
-				*args = '\0';
-			args++;
-		}
-		/* Check for end of line */
-		if ( ! *args )
-			break;
-		/* We have found the start of the next argument */
-		if ( argv )
-			argv[argc] = args;
-		argc++;
-		/* Skip to start of next whitespace, if any */
-		while ( *args && ! isspace ( *args ) ) {
-			args++;
-		}
+	
+out_of_memory:
+	while ( *argv_start != argv ) {
+		struct argument *tmp;
+		tmp = *argv_start;
+		*argv_start = ( *argv_start ) -> next;
 	}
-	return argc;
+	free ( argv );
+	return -ENOMEM;
 }
-#endif
+
 /**
  * Execute command line
  *
@@ -337,40 +332,28 @@ int system ( const char *command ) {
 	int i;
 	struct argument *argv_start;
 	struct argument *arg;
-#if 0
-	/* Perform variable expansion */
-	args = expand_command ( command );
-	if ( ! args )
-		return -ENOMEM;
 
-	/* Count arguments */
-	argc = split_args ( args, NULL );
-
-	/* Create argv array and execute command */
-	if ( argc ) {
-		char * argv[argc + 1];
-		
-		split_args ( args, argv );
-		argv[argc] = NULL;
-
-		if ( argv[0][0] != '#' )
-			rc = execv ( argv[0], argv );
-	}
-
-	free ( args );
-#endif
 	argc = expand_command ( command, &argv_start );
+	
+	if ( argc < 0 )
+		return -ENOMEM;
+	
 	arg = argv_start;
 	{
 		char *argv[argc + 1];
 		for ( i = 0; i < argc; i++ ) {
+			struct argument *tmp;
+			tmp = arg;
 			argv[i] = arg -> word;
 			arg = arg -> next;
-			printf ( "argv[%d] = %s\n", i, argv[i] );
+			free ( tmp );
 		}
 		argv[i] = NULL;
+		
 		if ( argv[0][0] != '#' )
-			rc = execv ( argv[0], argv );	
+			rc = execv ( argv[0], argv );
+		for ( i = 0; i < argc; i++)
+			free ( argv[i] );
 	}
 	return rc;
 }
