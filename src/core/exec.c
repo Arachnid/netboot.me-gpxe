@@ -96,64 +96,11 @@ char * parse_dquote ( char *inp, char **end );
 
 char * dollar_expand ( char *inp, char **end );
 
-char * parse_dquote ( char *inp, char **end ) {
-	char *head;
-	char *expquote;
-	char *var;
-	char *tmp;
-	int new_len;
-	
-	*inp = 0;
-	expquote = strdup ( inp + 1 );
-	head = expquote;
-	
-	while ( *head ) {
-		switch ( *head ) {
-			case '"':
-				*head = 0;
-				*end = head + 1;
-				return expquote;
-			case '\\':
-				if ( head[1] ) {
-					if ( head[1] != '\n' ) {
-						memmove ( head, head + 1, strlen ( head + 1 ) + 1 );
-						head++;
-					} else {
-						memmove ( head, head + 2, strlen ( head + 2 ) + 1 );
-					}
-				}
-				break;
-			case '$':
-				var = dollar_expand ( head, &tmp );
-				if ( !tmp || !var ) {
-					*end = NULL;
-					free ( expquote );
-					return NULL;
-				}
-				head = tmp;
-				tmp = expquote;
-				new_len = asprintf ( &expquote, "%s%s%s", expquote, var, head );
-				head = expquote + strlen ( tmp ) + strlen ( var );
-				free ( var );
-				free ( tmp );
-				if ( new_len < 0 )
-					return NULL;
-				break;
-			default:
-				head++;
-		}
-	}
-	printf ( "end of string while looking for \"\n" );
-	free ( expquote );
-	*end = head;
-	return NULL;
-}
-
 char * dollar_expand ( char *inp, char **end ) {
 	char *expdollar = NULL;
 	char *name;
 	int setting_len;
-	//int new_len;
+
 	if ( inp[1] == '{' ) {
 		*inp = 0;
 		name = ( inp + 2 );
@@ -197,6 +144,127 @@ char * dollar_expand ( char *inp, char **end ) {
 	return expdollar;	
 }
 
+char * parse_escape ( char *input, char **end ) {
+	char *exp;
+	*input = 0;
+	if ( input[1] == '\n' ) {
+		*end = input + 2;
+		exp = malloc ( 1 );
+		*exp = 0;
+	} else {
+		*end = input + 2;
+		asprintf ( &exp, "%c", input[1] );
+	}
+	return exp;
+}
+
+#define			ENDQUOTES	0
+#define			TABLE		1
+#define			FUNC		2
+#define			ENDTOK		3
+
+char * parse_var ( char *input, char **end );
+char * parse_escape ( char *input, char **end );
+
+struct char_table {
+	char token;
+	int type;
+	union {
+		struct {
+			struct char_table *ntable;
+			int len;
+		} next_table;
+		char * ( *parse_func ) ( char *, char ** );
+	}next;
+};
+
+struct char_table dquote_table[3] = {
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{ .token = '"', .type = ENDQUOTES },
+	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape }
+};
+struct char_table squote_table[1] = {
+	{ .token = '\'', .type = ENDQUOTES }
+};
+static struct char_table table[6] = {
+	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
+	{ .token = '"', .type = TABLE, .next = 
+				{.next_table = { .ntable = dquote_table, .len = 3 } } },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
+	{ .token = ' ', .type = ENDTOK },
+	{ .token = '\t', .type = ENDTOK }
+};
+
+char * expand_string ( char * input, char **end, const struct char_table *table, int tlen ) {
+	char *expstr;
+	char *head;
+	char *nstr, *tmp;
+	int i;
+	int new_len;
+	
+	expstr = strdup ( input );
+	head = expstr;
+	
+	while ( *head ) {
+		const struct char_table * tline = NULL;
+		
+		for ( i = 0; i < tlen; i++ ) {
+			if ( table[i].token == *head ) {
+				tline = table + i;
+				break;
+			}
+		}
+		
+		if ( ! tline ) {
+			head++;
+		} else {
+			switch ( tline -> type ) {
+				case ENDQUOTES: /* 0 for end of input, where next char is to be discarded. Used for ending ' or " */
+					*head = 0;
+					*end = head + 1;
+					return expstr;
+					break;
+				case TABLE: /* 1 for recursive call. Probably found quotes */
+					{
+						*head = 0;
+						nstr = expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len );
+						tmp = expstr;
+						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
+						head = expstr + strlen ( tmp ) + strlen ( nstr );
+						free ( tmp );
+						free ( nstr );
+						if ( !nstr || new_len < 0 )
+							return NULL;
+					}
+					break;
+				case FUNC: /* Call another function */
+					{
+						char * ( * f ) ( char *, char ** );
+						char *nstr;
+						f = tline->next.parse_func;
+						nstr = f ( head, &head );
+						tmp = expstr;
+						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
+						head = expstr + strlen ( tmp ) + strlen ( nstr );
+						free ( tmp );
+						free ( nstr );
+						if ( !nstr || new_len < 0 )
+							return NULL;
+					}
+					break;
+				case ENDTOK: /* End of input, and we also want next character */
+					*end = head;
+					return expstr;
+					break;
+			}
+		}
+		
+	}
+	*end = head;
+	return expstr;
+}
+
 /**
  * Expand variables within command line
  *
@@ -207,106 +275,46 @@ char * dollar_expand ( char *inp, char **end ) {
  * must eventually free() it.
  */
 int expand_command ( const char *command, struct argument **argv_start ) {
-	char *expcmd;
-	char *start;
-	char *head;
-	//char *name;
-	char *tail;
-	//int setting_len;
-	int new_len;
-	char *tmp;
-	char *var;
-	struct argument *argv;
-	int argc = 0;
 
+	char *expcmd;
+	char *head, *end;
+	char *nstring;
+	struct argument *cur_arg = NULL;
+	int argc = 0;
+	
 	/* Obtain temporary modifiable copy of command line */
 	expcmd = strdup ( command );	
 	if ( ! expcmd )
 		return -ENOMEM;
-	
-	*argv_start = malloc ( sizeof ( struct argument ) );
-	if ( !*argv_start )
-		return -ENOMEM;
-	argv = *argv_start;
-	/* Expand while expansions remain */
+	*argv_start = NULL;
 	head = expcmd;
-	while ( isspace ( *head ) )
-		head++;
-	start = head;
+	/* Expand while expansions remain */
 	while ( *head ) {
-		switch ( *head ) {
-			case '\\':
-				if ( head[1] ) {
-					if ( head[1] != '\n' ) {
-						memmove ( head, head + 1, strlen ( head + 1 ) + 1 );
-						head++;
-					} else {
-						memmove ( head, head + 2, strlen ( head + 2 ) + 1 );
-					}
-				}
-				break;
-			case '$':
-				var = dollar_expand ( head, &tail );
-				tmp = expcmd;
-				new_len = asprintf ( &expcmd, "%s%s%s", expcmd, var, tail );
-				head = expcmd + ( head - tmp );
-				start = expcmd + ( start - tmp );
-				free ( tmp );
-				if ( new_len < 0 ) {
-					goto out_of_memory;
-				}
-				break;
-			case '"':
-				var = parse_dquote ( head, &tmp );
-				if ( !var )
-					break;
-				head = tmp;
-				tmp = expcmd;
-				new_len = asprintf ( &expcmd, "%s%s%s", expcmd, var, head );
-				
-				start = expcmd + ( start - tmp );
-				head = expcmd + strlen ( tmp ) + strlen ( var );
-				free ( var );
-				free ( tmp );
-				
-				if ( new_len < 0 )
-					goto out_of_memory;
-				
-				break;
-			case '\'':
-				tmp = strchr ( head + 1, '\'' );
-				memmove ( head, head + 1, tmp - head - 1 );
-				memmove ( tmp - 1, tmp + 1, strlen ( tmp + 1 ) + 1 );
-				head = tmp - 1;
-				break;
-			case ' ':
-			case '\t':
-				argv -> word = malloc ( head - start + 1 );
-				strncpy ( argv -> word, start, head - start );
-				argv -> word[head - start] = 0;
-				argv -> next = malloc ( sizeof ( struct  argument ) ) ;
-				argv -> next -> next = NULL;
-				while ( isspace ( *head ) )
-					head++;
-				
-				argv = argv -> next;
-				start = head;
-				argc++;
-				break;
-			default:
-				head++;
+		while ( isspace ( *head ) )
+			head++;
+		nstring = expand_string ( head, &end, table, 6 );
+		if ( !nstring ) {
+			argc = -ENOMEM;
+			return argc;
 		}
-	}
-	if ( start != head ) {
-		argv -> word = strdup ( start );
-		argv -> next = NULL;
+		if ( nstring != end ) {
 		argc++;
-	}
-	else {
-		free ( argv );
+		if ( !*argv_start ) {
+			*argv_start = calloc ( sizeof ( struct argument ), 1 );
+			cur_arg = *argv_start;
+		} else {
+			cur_arg -> next = calloc ( sizeof ( struct argument ), 1 );
+			cur_arg = cur_arg -> next;
+		}
+		cur_arg -> word = calloc ( end - nstring + 1, 1);
+		strncpy ( cur_arg -> word, nstring, end - nstring );
+		}
+		free ( expcmd );
+		expcmd = nstring;
+		head = end;
 	}
 	return argc;
-	
+
 out_of_memory:
 	while ( *argv_start != argv ) {
 		struct argument *tmp;
@@ -347,7 +355,10 @@ int system ( const char *command ) {
 			argv[i] = arg -> word;
 			arg = arg -> next;
 			free ( tmp );
+			
+			printf ( "[%s] ", argv[i] );
 		}
+		printf ( "\n" );
 		argv[i] = NULL;
 		
 		if ( argv[0][0] != '#' )
