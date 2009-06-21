@@ -79,9 +79,8 @@ static signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6,
 
 static void ignore_whitespace ( void );
 static int parse_expr ( char **buffer );
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen );
+char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes );
 char * dollar_expand ( char *inp, char **end );
-char * parse_dquote ( char *inp, char **end );
 char * parse_escape ( char *input, char **end );
 static int isnum ( char *string, long *num );
 
@@ -134,7 +133,7 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
-	tmp = expand_string ( inp, &end, table, 21 );
+	tmp = expand_string ( inp, &end, table, 21, 0 );
 	inp = end;
 	free ( orig );
 	orig = tmp;

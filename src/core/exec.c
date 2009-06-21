@@ -32,6 +32,13 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/settings.h>
 
 #include <lib.h>
+
+
+#define			ENDQUOTES	0
+#define			TABLE		1
+#define			FUNC		2
+#define			ENDTOK		3
+
 /** @file
  *
  * Command execution
@@ -92,23 +99,22 @@ struct argument {
 };
 
 int parse_arith(char *inp_string, char **end, char **buffer);
-char * parse_dquote ( char *inp, char **end );
-
-char * dollar_expand ( char *inp, char **end );
 
 char * dollar_expand ( char *inp, char **end ) {
-	char *expdollar = NULL;
+	char *expdollar;
 	char *name;
 	int setting_len;
-
+	
+	*inp = 0;
 	if ( inp[1] == '{' ) {
-		*inp = 0;
 		name = ( inp + 2 );
 
 		/* Locate closer */
 		*end = strstr ( name, "}" );
-		if ( ! *end )
+		if ( ! *end ) {
+			printf ( "can't find ending }\n" );
 			return NULL;
+		}
 		**end = '\0';
 		*end += 1;
 		
@@ -127,7 +133,6 @@ char * dollar_expand ( char *inp, char **end ) {
 			return setting_buf;
 		}
 	} else if ( inp[1] == '(' ) {
-		*inp = 0;
 		name = ( inp + 1 );
 		{
 			int ret;
@@ -141,7 +146,10 @@ char * dollar_expand ( char *inp, char **end ) {
 			return arith_res;
 		}
 	}
-	return expdollar;	
+	/* Can't find { or (, so preserve the $ (current behaviour) */
+	*end = inp + 1;
+	asprintf ( &expdollar, "%c", '$' );
+	return expdollar;
 }
 
 char * parse_escape ( char *input, char **end ) {
@@ -158,13 +166,6 @@ char * parse_escape ( char *input, char **end ) {
 	return exp;
 }
 
-#define			ENDQUOTES	0
-#define			TABLE		1
-#define			FUNC		2
-#define			ENDTOK		3
-
-char * parse_var ( char *input, char **end );
-char * parse_escape ( char *input, char **end );
 
 struct char_table {
 	char token;
@@ -179,8 +180,8 @@ struct char_table {
 };
 
 struct char_table dquote_table[3] = {
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
 	{ .token = '"', .type = ENDQUOTES },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
 	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape }
 };
 struct char_table squote_table[1] = {
@@ -196,7 +197,7 @@ static struct char_table table[6] = {
 	{ .token = '\t', .type = ENDTOK }
 };
 
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen ) {
+char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes ) {
 	char *expstr;
 	char *head;
 	char *nstr, *tmp;
@@ -226,31 +227,21 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 					return expstr;
 					break;
 				case TABLE: /* 1 for recursive call. Probably found quotes */
-					{
-						*head = 0;
-						nstr = expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len );
-						tmp = expstr;
-						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
-						head = expstr + strlen ( tmp ) + strlen ( nstr );
-						free ( tmp );
-						free ( nstr );
-						if ( !nstr || new_len < 0 )
-							return NULL;
-					}
-					break;
 				case FUNC: /* Call another function */
 					{
-						char * ( * f ) ( char *, char ** );
-						char *nstr;
-						f = tline->next.parse_func;
-						nstr = f ( head, &head );
+						*head = 0;
+						nstr = ( tline -> type == TABLE ) ? ( expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len, 1 ) ) 
+													: ( tline -> next.parse_func ( head, &head ) );
 						tmp = expstr;
+						
 						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
 						head = expstr + strlen ( tmp ) + strlen ( nstr );
 						free ( tmp );
 						free ( nstr );
-						if ( !nstr || new_len < 0 )
+						if ( !nstr || new_len < 0 ) { /* if new_len < 0, expstr = NULL */
+							free ( expstr );
 							return NULL;
+						}
 					}
 					break;
 				case ENDTOK: /* End of input, and we also want next character */
@@ -260,6 +251,11 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 			}
 		}
 		
+	}
+	if ( in_quotes ) {
+		printf ( "can't find closing '%c'\n", table[0].token );
+		free ( expstr );
+		return NULL;
 	}
 	*end = head;
 	return expstr;
@@ -292,22 +288,39 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 	while ( *head ) {
 		while ( isspace ( *head ) )
 			head++;
-		nstring = expand_string ( head, &end, table, 6 );
+		if ( *head == '#' && !*argv_start ) { /* Comment starts with # */
+			return 0;
+		}
+		nstring = expand_string ( head, &end, table, 6, 0 );
 		if ( !nstring ) {
-			argc = -ENOMEM;
-			return argc;
+			while ( *argv_start ) {
+				cur_arg = *argv_start;
+				*argv_start = ( *argv_start ) -> next;
+				free ( cur_arg );
+			}
+			return -ENOMEM;
 		}
 		if ( nstring != end ) {
-		argc++;
-		if ( !*argv_start ) {
-			*argv_start = calloc ( sizeof ( struct argument ), 1 );
-			cur_arg = *argv_start;
-		} else {
-			cur_arg -> next = calloc ( sizeof ( struct argument ), 1 );
-			cur_arg = cur_arg -> next;
-		}
-		cur_arg -> word = calloc ( end - nstring + 1, 1);
-		strncpy ( cur_arg -> word, nstring, end - nstring );
+			argc++;
+			if ( !*argv_start ) {
+				*argv_start = calloc ( sizeof ( struct argument ), 1 );
+				cur_arg = *argv_start;
+			} else {
+				cur_arg -> next = calloc ( sizeof ( struct argument ), 1 );
+				cur_arg = cur_arg -> next;
+			}
+		
+			if ( !cur_arg ) {
+				while ( *argv_start ) {
+					cur_arg = *argv_start;
+					*argv_start = ( *argv_start ) -> next;
+					free ( cur_arg );
+				}
+				return -ENOMEM;
+			}
+		
+			cur_arg -> word = calloc ( end - nstring + 1, 1);
+			strncpy ( cur_arg -> word, nstring, end - nstring );
 		}
 		free ( expcmd );
 		expcmd = nstring;
@@ -334,7 +347,6 @@ out_of_memory:
  * Execute the named command and arguments.
  */
 int system ( const char *command ) {
-	//char *args;
 	int argc;
 	int rc = 0;
 	int i;
@@ -345,7 +357,7 @@ int system ( const char *command ) {
 	
 	if ( argc < 0 )
 		return -ENOMEM;
-	
+
 	arg = argv_start;
 	{
 		char *argv[argc + 1];
@@ -355,13 +367,10 @@ int system ( const char *command ) {
 			argv[i] = arg -> word;
 			arg = arg -> next;
 			free ( tmp );
-			
-			printf ( "[%s] ", argv[i] );
 		}
-		printf ( "\n" );
 		argv[i] = NULL;
 		
-		if ( argv[0][0] != '#' )
+		if ( argc > 0 )
 			rc = execv ( argv[0], argv );
 		for ( i = 0; i < argc; i++)
 			free ( argv[i] );

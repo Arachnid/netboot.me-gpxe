@@ -1,0 +1,14 @@
+#!gpxe
+#Tests for quoting. '
+echo "ab"
+#Spaces and escapes are permitted within " 
+echo "Hello world,\ howdy?"
+#Demonstrates escapes
+echo Hello\ world. Don\'t shoot!
+#Any character is permitted between ' and ', except another '
+set a '"hello'
+set b 'world"'
+echo $("${a} ${b}" == "\"hello world\"")
+echo "$("${a} ${b}" == \"hello\ world\")"
+echo '${a} = '${a} '${b}'" = ${b}"
+echo $((1+2*3)<<2)
