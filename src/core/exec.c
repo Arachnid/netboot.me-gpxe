@@ -30,14 +30,9 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/tables.h>
 #include <gpxe/command.h>
 #include <gpxe/settings.h>
+#include <gpxe/parse.h>
 
 #include <lib.h>
-
-
-#define			ENDQUOTES	0
-#define			TABLE		1
-#define			FUNC		2
-#define			ENDTOK		3
 
 /** @file
  *
@@ -89,7 +84,7 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( branch_stack[branch_tos] || !strcmp ( cmd -> name, "if" ) || !strcmp ( cmd -> name, "fi" ) || !strcmp ( cmd -> name, "else" ) )
+			if ( branch_stack[branch_tos] || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;
@@ -104,8 +99,6 @@ struct argument {
 	char *word;
 	struct argument *next;
 };
-
-int parse_arith(char *inp_string, char **end, char **buffer);
 
 char * dollar_expand ( char *inp, char **end ) {
 	char *expdollar;
@@ -173,19 +166,6 @@ char * parse_escape ( char *input, char **end ) {
 	return exp;
 }
 
-
-struct char_table {
-	char token;
-	int type;
-	union {
-		struct {
-			struct char_table *ntable;
-			int len;
-		} next_table;
-		char * ( *parse_func ) ( char *, char ** );
-	}next;
-};
-
 struct char_table dquote_table[3] = {
 	{ .token = '"', .type = ENDQUOTES },
 	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
@@ -204,13 +184,14 @@ static struct char_table table[6] = {
 	{ .token = '\t', .type = ENDTOK }
 };
 
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes ) {
+char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success ) {
 	char *expstr;
 	char *head;
 	char *nstr, *tmp;
 	int i;
 	int new_len;
 	
+	*success = 0;
 	expstr = strdup ( input );
 	head = expstr;
 	
@@ -225,10 +206,12 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 		}
 		
 		if ( ! tline ) {
+			*success = 1;
 			head++;
 		} else {
-			switch ( tline -> type ) {
+			switch ( tline->type ) {
 				case ENDQUOTES: /* 0 for end of input, where next char is to be discarded. Used for ending ' or " */
+					*success = 1;
 					*head = 0;
 					*end = head + 1;
 					//printf ( "return value: [%s]\n", expstr );
@@ -237,16 +220,15 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 				case TABLE: /* 1 for recursive call. Probably found quotes */
 				case FUNC: /* Call another function */
 					{
+						*success = 1;
 						*head = 0;
-						nstr = ( tline -> type == TABLE ) ? ( expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len, 1 ) ) 
-													: ( tline -> next.parse_func ( head, &head ) );
+						nstr = ( tline->type == TABLE ) ? ( expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len, 1, success ) ) 
+													: ( tline->next.parse_func ( head, &head ) );
 						tmp = expstr;
 						
 						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
-						if ( in_quotes || tline -> type == TABLE )
-							head = expstr + strlen ( tmp ) + strlen ( nstr );
-						else
-							head = expstr + strlen ( tmp );
+						head = expstr + strlen ( tmp ) + strlen ( nstr );
+						
 						free ( tmp );
 						free ( nstr );
 						if ( !nstr || new_len < 0 ) { /* if new_len < 0, expstr = NULL */
@@ -288,6 +270,7 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 	char *nstring;
 	struct argument *cur_arg = NULL;
 	int argc = 0;
+	int success;
 	
 	/* Obtain temporary modifiable copy of command line */
 	expcmd = strdup ( command );	
@@ -302,36 +285,39 @@ int expand_command ( const char *command, struct argument **argv_start ) {
 		if ( *head == '#' && !*argv_start ) { /* Comment starts with # */
 			return 0;
 		}
-		nstring = expand_string ( head, &end, table, 6, 0 );
+		nstring = expand_string ( head, &end, table, 6, 0, &success );
 		if ( !nstring ) {
 			while ( *argv_start ) {
 				cur_arg = *argv_start;
-				*argv_start = ( *argv_start ) -> next;
+				*argv_start = ( *argv_start )->next;
 				free ( cur_arg );
 			}
+			free ( expcmd );
 			return -ENOMEM;
 		}
-		if ( nstring != end ) {
+		if ( success ) {
 			argc++;
 			if ( !*argv_start ) {
 				*argv_start = calloc ( sizeof ( struct argument ), 1 );
 				cur_arg = *argv_start;
 			} else {
-				cur_arg -> next = calloc ( sizeof ( struct argument ), 1 );
-				cur_arg = cur_arg -> next;
+				cur_arg->next = calloc ( sizeof ( struct argument ), 1 );
+				cur_arg = cur_arg->next;
 			}
 		
 			if ( !cur_arg ) {
 				while ( *argv_start ) {
 					cur_arg = *argv_start;
-					*argv_start = ( *argv_start ) -> next;
+					*argv_start = ( *argv_start )->next;
 					free ( cur_arg );
 				}
+				free ( expcmd );
+				free ( nstring );
 				return -ENOMEM;
 			}
 		
-			cur_arg -> word = calloc ( end - nstring + 1, 1);
-			strncpy ( cur_arg -> word, nstring, end - nstring );
+			cur_arg->word = calloc ( end - nstring + 1, 1);
+			strncpy ( cur_arg->word, nstring, end - nstring );
 		}
 		free ( expcmd );
 		expcmd = nstring;
@@ -375,8 +361,8 @@ int system ( const char *command ) {
 		for ( i = 0; i < argc; i++ ) {
 			struct argument *tmp;
 			tmp = arg;
-			argv[i] = arg -> word;
-			arg = arg -> next;
+			argv[i] = arg->word;
+			arg = arg->next;
 			free ( tmp );
 			
 			//printf ( "[%s] ", argv[i] );

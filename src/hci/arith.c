@@ -19,9 +19,8 @@
 #include <stdio.h>
 #include <errno.h>
 
-#ifndef __ARITH_TEST__
 #include <lib.h>
-#endif
+#include <gpxe/parse.h>
 
 #define NUM_OPS		20
 #define MAX_PRIO		11
@@ -55,42 +54,17 @@ static union {
 	char *str_value;
 }tok_value;
 
-struct char_table {
-	char token;
-	int type;
-	union {
-		struct {
-			struct char_table *ntable;
-			int len;
-		} next_table;
-		char * ( *parse_func ) ( char *, char ** );
-	}next;
-};
-
-
 /* Here is a table of the operators */
 static const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
 						'<', SEP2, '<', '=', SEP1, '<', '<', SEP1, '>', SEP2, '>', '=', SEP1, '>', '>', SEP1,  '&', SEP2,
 						'|', SEP2, '^', SEP2, '&', '&', SEP1, '|', '|', SEP1, '!', '=', SEP1, '=', '=', SEP1, '\0'
 };
 
-//static const char *keyword_table = " \t\v()'\"$!~*/%+-<=>&|^";			/* Characters that cannot appear in a string */
 static signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 4, 3, 2, 1, 0, 5, 5 };
 
 static void ignore_whitespace ( void );
 static int parse_expr ( char **buffer );
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes );
-char * dollar_expand ( char *inp, char **end );
-char * parse_escape ( char *input, char **end );
-int isnum ( char *string, long *num );
 
-#define			ENDQUOTES	0
-#define			TABLE		1
-#define			FUNC		2
-#define			ENDTOK		3
-
-extern struct char_table dquote_table[3];
-extern struct char_table squote_table[1];
 struct char_table table[21] = {
 	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
 	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
@@ -120,6 +94,7 @@ static void input ( void ) {
 	char *p1, *p2;
 	char *strtmp = NULL, *tmp;
 	char *end;
+	int success;
 	
 	if ( tok == -1 )
 		return;
@@ -133,12 +108,18 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
-	tmp = expand_string ( inp, &end, table, 21, 1 );
+	tmp = expand_string ( inp, &end, table, 21, 1, &success );
 	inp = end;
 	free ( orig );
-	orig = tmp;
 	
-	if ( tmp != end ) {
+	if ( !tmp ) {
+		tok = -1;
+		err_val = -ENOMEM;
+		return;
+	}
+	
+	orig = tmp;
+	if ( success ) {
 		strtmp = calloc ( end - tmp + 1, 1 );
 		strncpy ( strtmp, tmp, end - tmp );
 		if ( isnum ( strtmp, &tok_value.num_value ) ) {
@@ -271,8 +252,6 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 	long value;
 	int bothints = 1;
 	long lhs, rhs;
-	
-	printf ( "lhs = %s, rhs = %s\n", op1, op2 );
 	
 	if ( op1 ) {
 		if ( ! isnum ( op1, &lhs ) ) 
