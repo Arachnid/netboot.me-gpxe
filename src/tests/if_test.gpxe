@@ -1,0 +1,35 @@
+#!gpxe
+if $(1)
+	echo 1
+	echo 2
+	if $(0)
+		echo "Fail"
+	else
+		if 2
+			echo 3
+			echo 3.1
+		else
+			echo "Fail"
+		fi
+	fi
+	echo 4
+	echo 5
+else
+	echo "Fail"
+	if $(1)
+		echo "Fail"
+		if 1
+			echo "Fail"
+		fi
+	else
+		echo "Fail"
+		if 2
+			echo "Fail"
+		else
+			echo "Fail"
+		fi
+	fi
+	echo "Fail"
+fi
+echo 6
+echo 7

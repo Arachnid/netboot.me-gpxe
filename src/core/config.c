@@ -210,6 +210,9 @@ REQUIRE_OBJECT ( digest_cmd );
 #ifdef PXE_CMD
 REQUIRE_OBJECT ( pxe_cmd );
 #endif
+#ifdef IF_CMD
+REQUIRE_OBJECT ( if_cmd );
+#endif
 
 /*
  * Drag in miscellaneous objects

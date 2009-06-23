@@ -82,7 +82,7 @@ static int parse_expr ( char **buffer );
 char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes );
 char * dollar_expand ( char *inp, char **end );
 char * parse_escape ( char *input, char **end );
-static int isnum ( char *string, long *num );
+int isnum ( char *string, long *num );
 
 #define			ENDQUOTES	0
 #define			TABLE		1
@@ -133,7 +133,7 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
-	tmp = expand_string ( inp, &end, table, 21, 0 );
+	tmp = expand_string ( inp, &end, table, 21, 1 );
 	inp = end;
 	free ( orig );
 	orig = tmp;
@@ -176,7 +176,7 @@ static void input ( void ) {
 }
 
 /* Check if a string is a number: "-1" and "+42" is accepted, but not "-1a". If so, place it in num and return 1 else num = 0 and return 0 */
-static int isnum ( char *string, long *num ) {
+int isnum ( char *string, long *num ) {
 	int flag = 0;
 	
 	*num = 0;
@@ -271,6 +271,8 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 	long value;
 	int bothints = 1;
 	long lhs, rhs;
+	
+	printf ( "lhs = %s, rhs = %s\n", op1, op2 );
 	
 	if ( op1 ) {
 		if ( ! isnum ( op1, &lhs ) ) 
@@ -456,34 +458,3 @@ int parse_arith ( char *inp_string, char **end, char **buffer ) {
 	return 0;
 }
 
-#ifdef __ARITH_TEST__
-int main ( int argc, char *argv[] ) {
-	char *ret_val;
-	int r = 0;
-	char *head, *tail, *string, *t;
-	char line[100];
-	
-	while ( !feof ( stdin ) ) {
-		fgets ( line, 100, stdin );
-		if ( line[strlen ( line ) - 1] == '\n' )
-			line[strlen ( line ) - 1] = 0;
-		asprintf ( &string, "%s", line );
-		while ( ( head = strstr ( string, "$(" ) ) != NULL ) {
-			*head++ = 0;
-			r = parse_arith ( head, &tail, &ret_val );
-			t = string;
-			if ( r == 0 ) {
-				asprintf ( &string, "%s%s%s", string, ret_val, tail );
-				free ( ret_val );
-			} else
-				break;
-			free ( t );
-		}
-		if ( r == 0 ) {
-			printf ( "Line: %s\n", string );
-		}
-		free ( string );
-	}
-	return 0;
-}
-#endif

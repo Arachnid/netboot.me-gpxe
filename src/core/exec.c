@@ -49,6 +49,9 @@ FILE_LICENCE ( GPL2_OR_LATER );
 int optind;
 int nextchar;
 
+extern int branch_stack[10];
+extern int branch_tos;
+
 /**
  * Execute command
  *
@@ -85,8 +88,12 @@ int execv ( const char *command, char * const argv[] ) {
 
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
-		if ( strcmp ( command, cmd->name ) == 0 )
-			return cmd->exec ( argc, ( char ** ) argv );
+		if ( strcmp ( command, cmd->name ) == 0 ) {
+			if ( branch_stack[branch_tos] || !strcmp ( cmd -> name, "if" ) || !strcmp ( cmd -> name, "fi" ) || !strcmp ( cmd -> name, "else" ) )
+				return cmd->exec ( argc, ( char ** ) argv );
+			else
+				return 0;
+		}
 	}
 
 	printf ( "%s: command not found\n", command );
@@ -224,6 +231,7 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 				case ENDQUOTES: /* 0 for end of input, where next char is to be discarded. Used for ending ' or " */
 					*head = 0;
 					*end = head + 1;
+					//printf ( "return value: [%s]\n", expstr );
 					return expstr;
 					break;
 				case TABLE: /* 1 for recursive call. Probably found quotes */
@@ -235,7 +243,10 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 						tmp = expstr;
 						
 						new_len = asprintf ( &expstr, "%s%s%s", expstr, nstr, head );
-						head = expstr + strlen ( tmp ) + strlen ( nstr );
+						if ( in_quotes || tline -> type == TABLE )
+							head = expstr + strlen ( tmp ) + strlen ( nstr );
+						else
+							head = expstr + strlen ( tmp );
 						free ( tmp );
 						free ( nstr );
 						if ( !nstr || new_len < 0 ) { /* if new_len < 0, expstr = NULL */
@@ -367,8 +378,11 @@ int system ( const char *command ) {
 			argv[i] = arg -> word;
 			arg = arg -> next;
 			free ( tmp );
+			
+			//printf ( "[%s] ", argv[i] );
 		}
 		argv[i] = NULL;
+		//printf ( "\n" );
 		
 		if ( argc > 0 )
 			rc = execv ( argv[0], argv );
