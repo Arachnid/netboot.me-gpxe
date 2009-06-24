@@ -45,8 +45,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 int optind;
 int nextchar;
 
-extern int branch_stack[10];
-extern int branch_tos;
+extern struct generic_stack if_stack;
+extern int if_tos;
 
 /**
  * Execute command
@@ -85,7 +85,7 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( branch_stack[branch_tos] || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
+			if ( !if_stack.ptr || ( ( int * ) if_stack.ptr )[if_tos] || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;

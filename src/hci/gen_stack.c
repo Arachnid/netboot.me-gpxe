@@ -16,8 +16,16 @@ void init_generic_stack ( struct generic_stack *stack, size_t size ) {
 
 int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 	if ( stack->tos >= 0 ) {
+		void *nptr;
 		memcpy ( ptr, ( void * ) ( ( (int)stack->ptr ) + stack->size * stack->tos-- ), stack->size );
-		return 0;
+		nptr = realloc ( stack->ptr, stack->size * ( stack->tos + 1 ) );
+		if ( nptr ) {
+			stack->ptr = nptr;
+			if ( stack->tos == -1 )
+				stack->ptr = NULL;
+			return 0;
+		} else
+			return -ENOMEM;
 	} else
 		return -ENOMEM;
 }
