@@ -12,3 +12,4 @@ echo $("${a} ${b}" == "\"hello world\"")
 echo "$("${a} ${b}" == \"hello\ world\")"
 echo '${a} = '${a} '${b}'" = ${b}"
 echo $((1+2*3)<<2)
+echo $('' == "" )

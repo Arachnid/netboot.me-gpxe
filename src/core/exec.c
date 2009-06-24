@@ -31,6 +31,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/command.h>
 #include <gpxe/settings.h>
 #include <gpxe/parse.h>
+#include <gpxe/gen_stack.h>
 
 #include <lib.h>
 
@@ -95,10 +96,7 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-struct argument {
-	char *word;
-	struct argument *next;
-};
+
 
 char * dollar_expand ( char *inp, char **end ) {
 	char *expdollar;
@@ -125,25 +123,24 @@ char * dollar_expand ( char *inp, char **end ) {
 
 		/* Read setting into temporary buffer */
 		{
-			char *setting_buf = malloc ( setting_len + 1 );
+			expdollar = malloc ( setting_len + 1 );
 
-			setting_buf[0] = '\0';
-			fetchf_named_setting ( name, setting_buf,
+			expdollar[0] = '\0';
+			fetchf_named_setting ( name, expdollar,
 					       setting_len + 1 );
-			return setting_buf;
+			return expdollar;
 		}
 	} else if ( inp[1] == '(' ) {
 		name = ( inp + 1 );
 		{
 			int ret;
-			char *arith_res;
-			ret = parse_arith ( name, end, &arith_res );
+			ret = parse_arith ( name, end, &expdollar );
 			
 			if( ret < 0 ) {
 				return NULL;
 			}
 			
-			return arith_res;
+			return expdollar;
 		}
 	}
 	/* Can't find { or (, so preserve the $ (current behaviour) */
@@ -158,7 +155,8 @@ char * parse_escape ( char *input, char **end ) {
 	if ( input[1] == '\n' ) {
 		*end = input + 2;
 		exp = malloc ( 1 );
-		*exp = 0;
+		if ( exp )
+			*exp = 0;
 	} else {
 		*end = input + 2;
 		asprintf ( &exp, "%c", input[1] );
@@ -184,10 +182,10 @@ static struct char_table table[6] = {
 	{ .token = '\t', .type = ENDTOK }
 };
 
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success ) {
+char * expand_string ( const char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success ) {
 	char *expstr;
 	char *head;
-	char *nstr, *tmp;
+	char *tmp;
 	int i;
 	int new_len;
 	
@@ -214,15 +212,17 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
 					*success = 1;
 					*head = 0;
 					*end = head + 1;
-					//printf ( "return value: [%s]\n", expstr );
 					return expstr;
 					break;
 				case TABLE: /* 1 for recursive call. Probably found quotes */
 				case FUNC: /* Call another function */
 					{
+						char *nstr;
+						int s2;
+						
 						*success = 1;
 						*head = 0;
-						nstr = ( tline->type == TABLE ) ? ( expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len, 1, success ) ) 
+						nstr = ( tline->type == TABLE ) ? ( expand_string ( head + 1, &head, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 ) ) 
 													: ( tline->next.parse_func ( head, &head ) );
 						tmp = expstr;
 						
@@ -263,66 +263,57 @@ char * expand_string ( char * input, char **end, const struct char_table *table,
  * The expanded command line is allocated with malloc() and the caller
  * must eventually free() it.
  */
-int expand_command ( const char *command, struct argument **argv_start ) {
-
+int expand_command ( const char *command, struct generic_stack *argv_stack ) {
 	char *expcmd;
 	char *head, *end;
 	char *nstring;
-	struct argument *cur_arg = NULL;
 	int argc = 0;
 	int success;
+	
+	init_generic_stack ( argv_stack, sizeof ( char * ) );
 	
 	/* Obtain temporary modifiable copy of command line */
 	expcmd = strdup ( command );	
 	if ( ! expcmd )
 		return -ENOMEM;
-	*argv_start = NULL;
 	head = expcmd;
+	
 	/* Expand while expansions remain */
 	while ( *head ) {
 		while ( isspace ( *head ) )
 			head++;
-		if ( *head == '#' && !*argv_start ) { /* Comment starts with # */
-			return 0;
+		if ( *head == '#' ) { /* Comment is a new word that starts with # */
+			break;
 		}
 		nstring = expand_string ( head, &end, table, 6, 0, &success );
-		if ( !nstring ) {
-			while ( *argv_start ) {
-				cur_arg = *argv_start;
-				*argv_start = ( *argv_start )->next;
-				free ( cur_arg );
-			}
-			free ( expcmd );
-			return -ENOMEM;
-		}
-		if ( success ) {
-			argc++;
-			if ( !*argv_start ) {
-				*argv_start = calloc ( sizeof ( struct argument ), 1 );
-				cur_arg = *argv_start;
-			} else {
-				cur_arg->next = calloc ( sizeof ( struct argument ), 1 );
-				cur_arg = cur_arg->next;
-			}
-		
-			if ( !cur_arg ) {
-				while ( *argv_start ) {
-					cur_arg = *argv_start;
-					*argv_start = ( *argv_start )->next;
-					free ( cur_arg );
+		if ( nstring ) {
+			if ( success ) {
+				char *cur_argv;
+				argc++;
+				cur_argv = calloc ( end - nstring + 1, 1);
+			
+				if ( cur_argv ) {
+					strncpy ( cur_argv, nstring, end - nstring );
+					if ( push_generic_stack ( argv_stack, &cur_argv, 0 ) < 0 ) {
+						free ( cur_argv );
+						free ( nstring );
+						nstring = NULL;
+					}
+				} else {
+					free ( nstring );
+					nstring = NULL;
 				}
-				free ( expcmd );
-				free ( nstring );
-				return -ENOMEM;
 			}
-		
-			cur_arg->word = calloc ( end - nstring + 1, 1);
-			strncpy ( cur_arg->word, nstring, end - nstring );
 		}
 		free ( expcmd );
+
+		if ( !nstring ) {
+			return -ENOMEM;
+		}
 		expcmd = nstring;
 		head = end;
 	}
+	free ( expcmd );
 	return argc;
 
 out_of_memory:
@@ -346,35 +337,25 @@ out_of_memory:
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	int i;
-	struct argument *argv_start;
-	struct argument *arg;
+	struct generic_stack argv_stack;
 
-	argc = expand_command ( command, &argv_start );
+	argc = expand_command ( command, &argv_stack );
 	
-	if ( argc < 0 )
-		return -ENOMEM;
-
-	arg = argv_start;
-	{
-		char *argv[argc + 1];
-		for ( i = 0; i < argc; i++ ) {
-			struct argument *tmp;
-			tmp = arg;
-			argv[i] = arg->word;
-			arg = arg->next;
-			free ( tmp );
-			
-			//printf ( "[%s] ", argv[i] );
-		}
-		argv[i] = NULL;
-		//printf ( "\n" );
+	if ( argc < 0 ) {
+		rc = argc;
+	} else {
+		char **argv = realloc ( argv_stack.ptr, ( argc + 1 ) * sizeof ( char * ) );
 		
-		if ( argc > 0 )
-			rc = execv ( argv[0], argv );
-		for ( i = 0; i < argc; i++)
-			free ( argv[i] );
+		if ( argv ) {
+			argv_stack.ptr = argv;
+			argv[argc] = NULL;
+			if ( argc > 0 )
+				rc = execv ( argv[0], argv );
+		} else
+			rc = -ENOMEM;
 	}
+	
+	free_generic_stack ( &argv_stack, 1 );
 	return rc;
 }
 

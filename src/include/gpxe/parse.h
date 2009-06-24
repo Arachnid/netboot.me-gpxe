@@ -20,7 +20,7 @@ struct char_table {
 
 int parse_arith ( char *inp_string, char **end, char **buffer );
 
-char * expand_string ( char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success );
+char * expand_string ( const char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success );
 char * dollar_expand ( char *inp, char **end );
 char * parse_escape ( char *input, char **end );
 int isnum ( char *string, long *num );
