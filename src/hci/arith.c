@@ -392,7 +392,7 @@ static int parse_expr ( char **buffer ) {
 	return parse_prio ( -1, buffer );
 }
 
-int parse_arith ( char *inp_string, char **end, char **buffer ) {
+int parse_arith ( const char *inp_string, char **end, char **buffer ) {
 	err_val = tok = 0;
 	orig = strdup ( inp_string );
 	inp = orig;

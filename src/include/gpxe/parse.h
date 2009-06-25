@@ -18,7 +18,7 @@ struct char_table {
 	}next;
 };
 
-int parse_arith ( char *inp_string, char **end, char **buffer );
+int parse_arith ( const char *inp_string, char **end, char **buffer );
 
 char * expand_string ( const char * input, char **end, const struct char_table *table, int tlen, int in_quotes, int *success );
 char * dollar_expand ( char *inp, char **end );

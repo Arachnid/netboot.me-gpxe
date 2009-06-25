@@ -26,7 +26,7 @@ static int if_exec ( int argc, char **argv ) {
 	push_generic_stack ( &else_stack, &zero, 0 );
 	push_generic_stack ( &if_stack, &cond, 0 );
 	
-	if ( ( ( int * ) if_stack.ptr )[if_tos] != 0 )
+	if ( ( if_tos == -1 || ( ( int * ) if_stack.ptr )[if_tos] ) && if_stack.tos - if_tos == 1 )		/* If the top of logical stack == 1 and the current command has been pushed over it */
 		if_tos++;
 	
 	//printf ( "Condition is %ld\n", cond );
