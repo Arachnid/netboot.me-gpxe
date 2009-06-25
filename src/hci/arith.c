@@ -34,19 +34,13 @@
 #define SEP1			-1
 #define SEP2			-1, -1
 
-#ifndef __ARITH_TEST__
 #define EPARSE		(EINVAL | EUNIQ_01)
 #define EDIV0			(EINVAL | EUNIQ_02)
 #define ENOOP		(EINVAL | EUNIQ_03)
 #define EWRONGOP	(EINVAL | EUNIQ_04)
-#else
-#define EPARSE		1
-#define EDIV0			2
-#define ENOOP		3
-#define EWRONGOP	4
-#endif
 
-static char *inp, *prev, *orig;
+static struct string *input_str;
+static char *inp_ptr = NULL;
 static int tok;
 static int err_val;
 static union {
@@ -92,36 +86,30 @@ struct char_table table[21] = {
 static void input ( void ) {
 	char t_op[3] = { '\0', '\0', '\0'};
 	char *p1, *p2;
-	char *strtmp = NULL, *tmp;
+	char *tmp, *strtmp = NULL;
 	char *end;
 	int success;
 	
 	if ( tok == -1 )
 		return;
 
-	prev = inp;
 	ignore_whitespace();
 	
-	if ( *inp == '\0' ) {
+	if ( *inp_ptr == '\0' ) {
 		tok = -1;
 		return;
 	}
 	tok = 0;
 	
-	tmp = expand_string ( inp, &end, table, 21, 1, &success );
-	inp = end;
-	free ( orig );
-	
+	tmp = expand_string ( input_str, &inp_ptr, &end, table, 21, 0, &success );
 	if ( !tmp ) {
 		tok = -1;
 		err_val = -ENOMEM;
 		return;
 	}
 	
-	orig = tmp;
 	if ( success ) {
-		strtmp = calloc ( end - tmp + 1, 1 );
-		strncpy ( strtmp, tmp, end - tmp );
+		strtmp = strndup ( inp_ptr, end - inp_ptr );
 		if ( isnum ( strtmp, &tok_value.num_value ) ) {
 			free ( strtmp );
 			tok = TOK_NUMBER;
@@ -129,18 +117,19 @@ static void input ( void ) {
 			tok_value.str_value = strtmp;
 			tok = TOK_STRING;
 		}
+		inp_ptr = end;
 		return;
 	}
 	
 	/* Check for an operator */
-	t_op[0] = *inp++;
+	t_op[0] = *inp_ptr++;
 	p1 = strstr ( op_table, t_op );
 	if ( !p1 ) {			/* The character is not present in the list of operators */
 		tok = *t_op;
 		return;
 	}
 	
-	t_op[1] = *inp;
+	t_op[1] = *inp_ptr;
 	p2 = strstr ( op_table, t_op );
 	if ( !p2 || p1 == p2 ) {
 		if ( ( p1 - op_table ) % 3 ) {			/* Without this, it would take '=' as '<=' */
@@ -151,7 +140,7 @@ static void input ( void ) {
 		tok = MIN_TOK + ( p1 - op_table ) / 3;
 		return;
 	}
-	inp++;
+	inp_ptr++;
 	tok = MIN_TOK + ( p2 - op_table ) / 3;
 
 }
@@ -178,8 +167,8 @@ int isnum ( char *string, long *num ) {
 }
 
 static void ignore_whitespace ( void ) {
-	while ( isspace ( *inp ) ) {
-		inp++;
+	while ( isspace ( *inp_ptr ) ) {
+		inp_ptr++;
 	}
 }
 
@@ -392,26 +381,35 @@ static int parse_expr ( char **buffer ) {
 	return parse_prio ( -1, buffer );
 }
 
-int parse_arith ( const char *inp_string, char **end, char **buffer ) {
+int parse_arith ( struct string *inp, char *orig, char **end ) {
+	char *buffer = NULL;
+	int start;
+	
+	start = orig - inp->value;
+	
+	input_str = inp;
 	err_val = tok = 0;
-	orig = strdup ( inp_string );
-	inp = orig;
+	inp_ptr = orig + 1;
+	
 	input();
-	*buffer = NULL;
 	
 	skip ( '(' );
-	parse_expr ( buffer );
-	
+	parse_expr ( &buffer );
 	if ( !err_val ) {
 		
 		if ( tok != ')' ) {
-			free ( *buffer );
 			err_val = -EPARSE;
+		} else {
+			orig = inp->value + start;
+			*orig = 0;
+			*end = inp_ptr;
+			orig = string3cat ( inp, buffer, *end );
+			*end = orig + start + strlen ( buffer );
 		}
+		free ( buffer );
 	}
-	*end = inp;
-	if ( err_val )	{			//Read till we get a ')'
 		
+	if ( err_val )	{		
 		if ( tok == TOK_STRING )
 			free ( tok_value.str_value );
 		switch ( err_val ) {
@@ -431,6 +429,7 @@ int parse_arith ( const char *inp_string, char **end, char **buffer ) {
 				printf("out of memory\n");
 				break;
 		}
+		free_string ( inp );
 		return err_val;
 	}
 	

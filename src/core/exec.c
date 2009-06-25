@@ -27,9 +27,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <getopt.h>
 #include <errno.h>
 #include <assert.h>
-#include <gpxe/tables.h>
 #include <gpxe/command.h>
-#include <gpxe/settings.h>
 #include <gpxe/parse.h>
 #include <gpxe/gen_stack.h>
 
@@ -114,66 +112,51 @@ static struct char_table table[6] = {
 	{ .token = '\t', .type = ENDTOK }
 };
 
-/**
- * Expand variables within command line
- *
- * @v command		Command line
- * @ret expcmd		Expanded command line
- *
- * The expanded command line is allocated with malloc() and the caller
- * must eventually free() it.
- */
-int expand_command ( const char *command, struct generic_stack *argv_stack ) {
-	char *expcmd;
+static int expand_command ( const char *command, struct generic_stack *argv_stack ) {
 	char *head, *end;
 	char *nstring;
-	int argc = 0;
 	int success;
+	int argc;
 	
-	init_generic_stack ( argv_stack, sizeof ( char * ) );
+	struct string expcmd = { .value = NULL };
 	
-	/* Obtain temporary modifiable copy of command line */
-	expcmd = strdup ( command );	
-	if ( ! expcmd )
-		return -ENOMEM;
-	head = expcmd;
+	argc = 0;
+	init_generic_stack ( argv_stack, sizeof ( int ) );
+	
+	stringcpy ( &expcmd, command );
+	if ( ! expcmd.value ) {
+		argc = -ENOMEM;
+		return argc;
+	}
+	head = expcmd.value;
 	
 	/* Expand while expansions remain */
 	while ( *head ) {
-		while ( isspace ( *head ) )
+		while ( isspace ( *head ) ) {
+			*head = 0;
 			head++;
+		}
 		if ( *head == '#' ) { /* Comment is a new word that starts with # */
 			break;
 		}
-		nstring = expand_string ( head, &end, table, 6, 0, &success );
+		stringcpy ( &expcmd, head );
+		head = expcmd.value;
+		nstring = expand_string ( &expcmd, &head, &end, table, 6, 0, &success );
 		if ( nstring ) {
 			if ( success ) {
-				char *cur_argv;
 				argc++;
-				cur_argv = calloc ( end - nstring + 1, 1);
-			
-				if ( cur_argv ) {
-					strncpy ( cur_argv, nstring, end - nstring );
-					if ( push_generic_stack ( argv_stack, &cur_argv, 0 ) < 0 ) {
-						free ( cur_argv );
-						free ( nstring );
-						nstring = NULL;
-					}
-				} else {
-					free ( nstring );
-					nstring = NULL;
-				}
+				push_generic_stack ( argv_stack, &expcmd.value, 0 );
+				expcmd.value = NULL;
+				stringcpy ( &expcmd, end );
+				*end = 0;
 			}
+		} else {
+			argc = -ENOMEM;
+			break;
 		}
-		free ( expcmd );
-
-		if ( !nstring ) {
-			return -ENOMEM;
-		}
-		expcmd = nstring;
-		head = end;
+		head = expcmd.value;
 	}
-	free ( expcmd );
+	free_string ( &expcmd );
 	return argc;
 
 out_of_memory:
@@ -200,22 +183,22 @@ int system ( const char *command ) {
 	struct generic_stack argv_stack;
 
 	argc = expand_command ( command, &argv_stack );
-	
 	if ( argc < 0 ) {
 		rc = argc;
 	} else {
-		char **argv = realloc ( argv_stack.ptr, ( argc + 1 ) * sizeof ( char * ) );
-		
+		char **argv;
+				
+		argv = realloc ( argv_stack.ptr, sizeof ( char * ) * ( argc + 1 ) );
 		if ( argv ) {
 			argv_stack.ptr = argv;
 			argv[argc] = NULL;
+		
 			if ( argc > 0 )
 				rc = execv ( argv[0], argv );
-		} else
-			rc = -ENOMEM;
+		}
 	}
 	
-	free_generic_stack ( &argv_stack, 1 );
+	free_generic_stack ( &argv_stack, 0 );
 	return rc;
 }
 
