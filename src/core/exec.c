@@ -44,7 +44,6 @@ int optind;
 int nextchar;
 
 extern struct generic_stack if_stack;
-extern int if_tos;
 
 /**
  * Execute command
@@ -83,7 +82,7 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( !if_stack.ptr || ( ( int * ) if_stack.ptr )[if_tos] || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
+			if ( TOP_GEN_STACK_INT ( &if_stack ) || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;
@@ -93,24 +92,6 @@ int execv ( const char *command, char * const argv[] ) {
 	printf ( "%s: command not found\n", command );
 	return -ENOEXEC;
 }
-
-struct char_table dquote_table[3] = {
-	{ .token = '"', .type = ENDQUOTES },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape }
-};
-struct char_table squote_table[1] = {
-	{ .token = '\'', .type = ENDQUOTES }
-};
-static struct char_table table[6] = {
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
-	{ .token = '"', .type = TABLE, .next = 
-				{.next_table = { .ntable = dquote_table, .len = 3 } } },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
-	{ .token = ' ', .type = ENDTOK },
-	{ .token = '\t', .type = ENDTOK }
-};
 
 static int expand_command ( const char *command, struct generic_stack *argv_stack ) {
 	char *head, *end;
@@ -123,8 +104,7 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 	argc = 0;
 	init_generic_stack ( argv_stack, sizeof ( int ) );
 	
-	stringcpy ( &expcmd, command );
-	if ( ! expcmd.value ) {
+	if ( !stringcpy ( &expcmd, command ) ) {
 		argc = -ENOMEM;
 		return argc;
 	}
@@ -139,7 +119,10 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 		if ( *head == '#' ) { /* Comment is a new word that starts with # */
 			break;
 		}
-		stringcpy ( &expcmd, head );
+		if ( !stringcpy ( &expcmd, head ) ) {
+			argc = -ENOMEM;
+			break;
+		}
 		head = expcmd.value;
 		nstring = expand_string ( &expcmd, &head, &end, table, 6, 0, &success );
 		if ( nstring ) {
@@ -149,6 +132,12 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 				expcmd.value = NULL;
 				stringcpy ( &expcmd, end );
 				*end = 0;
+				/*
+				So if the command is: word1 word2 word3
+				argv_stack:	word1\0word2 word3
+							word2\0word3
+							word3
+				*/
 			}
 		} else {
 			argc = -ENOMEM;
@@ -187,18 +176,15 @@ int system ( const char *command ) {
 		rc = argc;
 	} else {
 		char **argv;
-				
-		argv = realloc ( argv_stack.ptr, sizeof ( char * ) * ( argc + 1 ) );
-		if ( argv ) {
-			argv_stack.ptr = argv;
+		if ( ! push_generic_stack ( &argv_stack, NULL, 0 ) ) {
+			argv = ( char ** ) argv_stack.ptr;
 			argv[argc] = NULL;
-		
 			if ( argc > 0 )
 				rc = execv ( argv[0], argv );
 		}
 	}
 	
-	free_generic_stack ( &argv_stack, 0 );
+	free_generic_stack ( &argv_stack, 1 );
 	return rc;
 }
 

@@ -17,7 +17,7 @@ struct char_table {
 	int type;
 	union {
 		struct {
-			struct char_table *ntable;
+			const struct char_table *ntable;
 			int len;
 		} next_table;
 		char * ( *parse_func ) ( struct string *, char *, char ** );
@@ -36,7 +36,9 @@ char * string3cat ( struct string *s1, const char *s2, const char *s3 );
 char * stringcpy ( struct string *s1, const char *s2 );
 char * stringcat ( struct string *s1, const char *s2 );
 
-extern struct char_table dquote_table[3];
-extern struct char_table squote_table[1];
+extern const struct char_table dquote_table[3];
+extern const struct char_table squote_table[1];
+extern const struct char_table arith_table[21];
+extern const struct char_table table[6];
 
 #endif

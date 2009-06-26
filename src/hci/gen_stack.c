@@ -5,14 +5,11 @@
 
 #include <gpxe/gen_stack.h>
 
-
-
 void init_generic_stack ( struct generic_stack *stack, size_t size ) {
 	stack->ptr = NULL;
 	stack->tos = -1;
 	stack->size = size;
 }
-
 
 int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 	if ( stack->tos >= 0 ) {

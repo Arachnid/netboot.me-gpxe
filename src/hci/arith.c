@@ -59,30 +59,6 @@ static signed const char op_prio[NUM_OPS]	= { 10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6,
 static void ignore_whitespace ( void );
 static int parse_expr ( char **buffer );
 
-struct char_table table[21] = {
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
-	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
-	{ .token = ' ', .type = ENDQUOTES },
-	{ .token = '\t', .type = ENDQUOTES },
-	{ .token = '~', .type = ENDTOK },
-	{ .token = '!', .type = ENDTOK },
-	{ .token = '*', .type = ENDTOK },
-	{ .token = '/', .type = ENDTOK },
-	{ .token = '%', .type = ENDTOK },
-	{ .token = '+', .type = ENDTOK },
-	{ .token = '-', .type = ENDTOK },
-	{ .token = '<', .type = ENDTOK },
-	{ .token = '=', .type = ENDTOK },
-	{ .token = '>', .type = ENDTOK },
-	{ .token = '&', .type = ENDTOK },
-	{ .token = '|', .type = ENDTOK },
-	{ .token = '^', .type = ENDTOK },
-	{ .token = '(', .type = ENDTOK },
-	{ .token = ')', .type = ENDTOK }
-};
-
 static void input ( void ) {
 	char t_op[3] = { '\0', '\0', '\0'};
 	char *p1, *p2;
@@ -101,7 +77,7 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
-	tmp = expand_string ( input_str, &inp_ptr, &end, table, 21, 0, &success );
+	tmp = expand_string ( input_str, &inp_ptr, &end, arith_table, 21, 0, &success );
 	if ( !tmp ) {
 		tok = -1;
 		err_val = -ENOMEM;

@@ -5,6 +5,48 @@
 #include <stdlib.h>
 #include <gpxe/settings.h>
 
+const struct char_table arith_table[21] = {
+	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
+	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
+	{ .token = ' ', .type = ENDQUOTES },
+	{ .token = '\t', .type = ENDQUOTES },
+	{ .token = '~', .type = ENDTOK },
+	{ .token = '!', .type = ENDTOK },
+	{ .token = '*', .type = ENDTOK },
+	{ .token = '/', .type = ENDTOK },
+	{ .token = '%', .type = ENDTOK },
+	{ .token = '+', .type = ENDTOK },
+	{ .token = '-', .type = ENDTOK },
+	{ .token = '<', .type = ENDTOK },
+	{ .token = '=', .type = ENDTOK },
+	{ .token = '>', .type = ENDTOK },
+	{ .token = '&', .type = ENDTOK },
+	{ .token = '|', .type = ENDTOK },
+	{ .token = '^', .type = ENDTOK },
+	{ .token = '(', .type = ENDTOK },
+	{ .token = ')', .type = ENDTOK }
+};
+
+const struct char_table dquote_table[3] = {
+	{ .token = '"', .type = ENDQUOTES },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape }
+};
+const struct char_table squote_table[1] = {
+	{ .token = '\'', .type = ENDQUOTES }
+};
+const struct char_table table[6] = {
+	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
+	{ .token = '"', .type = TABLE, .next = 
+				{.next_table = { .ntable = dquote_table, .len = 3 } } },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
+	{ .token = ' ', .type = ENDTOK },
+	{ .token = '\t', .type = ENDTOK }
+};
+
 char * string3cat ( struct string *s1, const char *s2, const char *s3 ) { /* The len is the size of s1 */
 	char *tmp = s1->value;
 	asprintf ( &s1->value, "%s%s%s", s1->value, s2, s3 );
@@ -92,6 +134,10 @@ char * dollar_expand ( struct string *s, char *inp, char ** end ) {
 
 char * parse_escape ( struct string *s, char *input, char **end ) {
 	char *exp;
+	if ( ! input[1] ) {
+		printf ( "stray \\\n" );
+		return s->value;
+	}
 	*input = 0;
 	*end = input + 2;
 	if ( input[1] == '\n' ) {
@@ -154,7 +200,12 @@ char * expand_string ( struct string *s, char **head, char **end, const struct c
 						*success = 1;
 						*cur_pos = 0;
 						tmp = s->value;
-						stringcat ( s, cur_pos + 1 );
+						
+						if ( !stringcat ( s, cur_pos + 1 ) ) {
+							printf ( "stringcat failed\n" );
+							return NULL;
+						}
+						/* tmp is now invalid. Should not be dereferenced */
 						cur_pos = s->value + ( cur_pos - tmp );
 						if ( !expand_string ( s, &cur_pos, &end, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 ) ) {
 							return NULL;
@@ -164,13 +215,9 @@ char * expand_string ( struct string *s, char **head, char **end, const struct c
 					break;
 				case FUNC: /* Call another function */
 					{
-						char *nstr;
-						
 						*success = 1;
-						nstr = tline->next.parse_func ( s, cur_pos, &cur_pos );
-						if ( !nstr ) {
+						if ( ! tline->next.parse_func ( s, cur_pos, &cur_pos ) )
 							return NULL;
-						}
 					}
 					break;
 					
