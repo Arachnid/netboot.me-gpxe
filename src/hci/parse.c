@@ -83,10 +83,11 @@ Before: [start]$<exp>[end]
 End: [start]<expanded>[end]
 and *end points to [end]
 */
-char * dollar_expand ( struct string *s, char *inp, char ** end ) {
+char * dollar_expand ( struct string *s, char *inp ) {
 	char *name;
 	int setting_len;
 	int len;
+	char *end;
 	
 	len = inp - s->value;
 	
@@ -95,14 +96,14 @@ char * dollar_expand ( struct string *s, char *inp, char ** end ) {
 		name = ( inp + 2 );
 
 		/* Locate closer */
-		*end = strstr ( name, "}" );
-		if ( ! *end ) {
+		end = strstr ( name, "}" );
+		if ( ! end ) {
 			printf ( "can't find ending }\n" );
 			free_string ( s );
-			return NULL;
+			return end;
 		}
-		**end = 0;
-		*end += 1;
+		*end = 0;
+		end += 1;
 		
 		/* Determine setting length */
 		setting_len = fetchf_named_setting ( name, NULL, 0 );
@@ -115,59 +116,58 @@ char * dollar_expand ( struct string *s, char *inp, char ** end ) {
 			expdollar[0] = '\0';
 			fetchf_named_setting ( name, expdollar,
 							setting_len + 1 );
-			if ( string3cat ( s, expdollar, *end ) )
-				*end = s->value + len + strlen ( expdollar );
+			if ( string3cat ( s, expdollar, end ) )
+				end = s->value + len + strlen ( expdollar );
 		}
-		return s->value;
+		return end;
 	} else if ( inp[1] == '(' ) {
 		name = inp;
 		{
-			int ret;
-			ret = parse_arith ( s, name, end );
-			return s->value;		/* if ret < 0, s->value = NULL */
+			end = parse_arith ( s, name );
+			return end;
 		}
 	}
 	/* Can't find { or (, so preserve the $ */
-	*end = inp + 1;
-	return s->value;
+	end = inp + 1;
+	return end;
 }
 
-char * parse_escape ( struct string *s, char *input, char **end ) {
+char * parse_escape ( struct string *s, char *input ) {
 	char *exp;
+	char *end;
+	
 	if ( ! input[1] ) {
 		printf ( "stray \\\n" );
-		return s->value;
+		return input + 1;
 	}
 	*input = 0;
-	*end = input + 2;
+	end = input + 2;
 	if ( input[1] == '\n' ) {
 		int len = input - s->value;
-		exp = stringcat ( s, *end );
-		*end = exp + len;
+		exp = stringcat ( s, end );
+		end = exp + len;
 	} else {
 		int len = input - s->value;
-		*end = input + 1;
-		exp = stringcat ( s, *end );
-		*end = exp + len + 1;
+		end = input + 1;
+		exp = stringcat ( s, end );
+		end = exp + len + 1;
 	}
-	return exp;
+	return end;
 }
 
-/* Both *head and *end point somewhere within s */
-char * expand_string ( struct string *s, char **head, char **end, const struct char_table *table, int tlen, int in_quotes, int *success ) {
+/* Return a pointer to the first unconsumed character */
+char * expand_string ( struct string *s, char *head, const struct char_table *table, int tlen, int in_quotes, int *success ) {
 	int i;
-	char *cur_pos;
-	int start;
+	int cur_pos;	/* s->value may be reallocated, so this seems better */
 	
 	*success = 0;
-	start = *head - s->value;
-	cur_pos = *head;
+	cur_pos = head - s->value;
 	
-	while ( *cur_pos ) {
+	while ( s->value[cur_pos] ) {
 		const struct char_table * tline = NULL;
 		
 		for ( i = 0; i < tlen; i++ ) {
-			if ( table[i].token == *cur_pos ) {
+			if ( table[i].token == s->value[cur_pos] ) {
 				tline = table + i;
 				break;
 			}
@@ -180,51 +180,42 @@ char * expand_string ( struct string *s, char **head, char **end, const struct c
 			switch ( tline->type ) {
 				case ENDQUOTES: /* 0 for end of input, where next char is to be discarded. Used for ending ' or " */
 				{
-					int pos = cur_pos - s->value;
-					char *t;
 					*success = 1;
-					*cur_pos = 0;
-					if ( ( t = stringcat ( s, cur_pos + 1 ) ) ) {
-						*end = t + pos;
-						*head = s->value + start;
-					}
-					return s->value;
+					s->value[cur_pos] = 0;
+					if ( ! stringcat ( s, s->value + cur_pos + 1 ) )
+						return NULL;
+					return s->value + cur_pos;
 				}
 					break;
 				case TABLE: /* 1 for recursive call. Probably found quotes */
 					{
 						int s2;
-						char *end;
 						char *tmp;
 						
 						*success = 1;
-						*cur_pos = 0;
-						tmp = s->value;
+						s->value[cur_pos] = 0;
+						/* Remove the current character and call recursively */
+						if ( !stringcat ( s, s->value + cur_pos + 1 ) )
+							return NULL;
 						
-						if ( !stringcat ( s, cur_pos + 1 ) ) {
-							printf ( "stringcat failed\n" );
+						tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 );
+						if ( ! tmp )
 							return NULL;
-						}
-						/* tmp is now invalid. Should not be dereferenced */
-						cur_pos = s->value + ( cur_pos - tmp );
-						if ( !expand_string ( s, &cur_pos, &end, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 ) ) {
-							return NULL;
-						}
-						cur_pos = end;
+						cur_pos = tmp - s->value;
 					}
 					break;
 				case FUNC: /* Call another function */
 					{
+						char *tmp;
 						*success = 1;
-						if ( ! tline->next.parse_func ( s, cur_pos, &cur_pos ) )
+						if ( ! ( tmp = tline->next.parse_func ( s, s->value + cur_pos ) ) )
 							return NULL;
+						cur_pos = tmp - s->value;
 					}
 					break;
 					
 				case ENDTOK: /* End of input, and we also want next character */
-					*end = cur_pos;
-					*head = s->value + start;
-					return s->value;
+					return s->value + cur_pos;
 					break;
 			}
 		}
@@ -235,7 +226,5 @@ char * expand_string ( struct string *s, char **head, char **end, const struct c
 		free_string ( s );
 		return NULL;
 	}
-	*end = cur_pos;
-	*head = s->value + start;
-	return s->value;
+	return s->value + cur_pos;
 }

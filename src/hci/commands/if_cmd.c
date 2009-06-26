@@ -25,8 +25,8 @@ static int if_exec ( int argc, char **argv ) {
 	}
 	cond = TOP_GEN_STACK_INT ( &if_stack ) ? ( cond ? 1 : 0 ) : 0;
 	if ( ( push_generic_stack ( &else_stack, &zero, 0 ) < 0 ) || ( push_generic_stack ( &if_stack, &cond, 0 ) < 0 ) ) {
-		free_generic_stack ( &if_stack );
-		free_generic_stack ( &else_stack );
+		free_generic_stack ( &if_stack, 0 );
+		free_generic_stack ( &else_stack, 0 );
 		return 1;
 	}
 

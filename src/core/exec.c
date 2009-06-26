@@ -95,7 +95,6 @@ int execv ( const char *command, char * const argv[] ) {
 
 static int expand_command ( const char *command, struct generic_stack *argv_stack ) {
 	char *head, *end;
-	char *nstring;
 	int success;
 	int argc;
 	
@@ -124,13 +123,16 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 			break;
 		}
 		head = expcmd.value;
-		nstring = expand_string ( &expcmd, &head, &end, table, 6, 0, &success );
-		if ( nstring ) {
+		end = expand_string ( &expcmd, head, table, 6, 0, &success );
+		if ( end ) {
 			if ( success ) {
+				char *argv = expcmd.value;
 				argc++;
-				push_generic_stack ( argv_stack, &expcmd.value, 0 );
 				expcmd.value = NULL;
-				stringcpy ( &expcmd, end );
+				if ( push_generic_stack ( argv_stack, &argv, 0 ) < 0 || !stringcpy ( &expcmd, end ) ) {
+					argc = -ENOMEM;
+					break;
+				}
 				*end = 0;
 				/*
 				So if the command is: word1 word2 word3

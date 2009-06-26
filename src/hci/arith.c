@@ -62,9 +62,10 @@ static int parse_expr ( char **buffer );
 static void input ( void ) {
 	char t_op[3] = { '\0', '\0', '\0'};
 	char *p1, *p2;
-	char *tmp, *strtmp = NULL;
+	char *strtmp = NULL;
 	char *end;
 	int success;
+	int start;
 	
 	if ( tok == -1 )
 		return;
@@ -77,15 +78,16 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
-	tmp = expand_string ( input_str, &inp_ptr, &end, arith_table, 21, 0, &success );
-	if ( !tmp ) {
+	start = inp_ptr - input_str->value;
+	end = expand_string ( input_str, inp_ptr, arith_table, 21, 0, &success );
+	if ( !end ) {
 		tok = -1;
 		err_val = -ENOMEM;
 		return;
 	}
 	
 	if ( success ) {
-		strtmp = strndup ( inp_ptr, end - inp_ptr );
+		strtmp = strndup ( input_str->value + start, ( end - input_str->value ) - start );
 		if ( isnum ( strtmp, &tok_value.num_value ) ) {
 			free ( strtmp );
 			tok = TOK_NUMBER;
@@ -357,9 +359,10 @@ static int parse_expr ( char **buffer ) {
 	return parse_prio ( -1, buffer );
 }
 
-int parse_arith ( struct string *inp, char *orig, char **end ) {
+char * parse_arith ( struct string *inp, char *orig ) {
 	char *buffer = NULL;
 	int start;
+	char *end = NULL;
 	
 	start = orig - inp->value;
 	
@@ -378,9 +381,9 @@ int parse_arith ( struct string *inp, char *orig, char **end ) {
 		} else {
 			orig = inp->value + start;
 			*orig = 0;
-			*end = inp_ptr;
-			orig = string3cat ( inp, buffer, *end );
-			*end = orig + start + strlen ( buffer );
+			end = inp_ptr;
+			orig = string3cat ( inp, buffer, end );
+			end = orig + start + strlen ( buffer );
 		}
 		free ( buffer );
 	}
@@ -406,9 +409,9 @@ int parse_arith ( struct string *inp, char *orig, char **end ) {
 				break;
 		}
 		free_string ( inp );
-		return err_val;
+		return end;
 	}
 	
-	return 0;
+	return end;
 }
 

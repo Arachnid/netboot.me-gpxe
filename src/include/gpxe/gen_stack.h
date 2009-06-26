@@ -14,9 +14,9 @@ struct generic_stack {
 };
 
 void init_generic_stack ( struct generic_stack *stack, size_t size );
-int push_generic_stack ( struct generic_stack *stack, void *str, int is_string );
+int push_generic_stack ( struct generic_stack *stack, void *str, int is_string );	/* Use is_string = 1 to allocate a new string on the heap */
 int pop_generic_stack ( struct generic_stack *stack, void *ptr );
-void free_generic_stack ( struct generic_stack *stack, int on_stack );
+void free_generic_stack ( struct generic_stack *stack, int on_stack );			/* Use on_stack = 1 to free stack values on the heap */
 
 /* convenience macros */
 #define TOP_GEN_STACK_INT( stack ) ( ( ( int * ) ( stack )->ptr )[( stack )->tos] )
