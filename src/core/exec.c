@@ -44,6 +44,9 @@ int optind;
 int nextchar;
 
 extern struct generic_stack if_stack;
+extern struct generic_stack command_list;
+extern struct generic_stack loop_stack;
+extern int prog_ctr;
 
 /**
  * Execute command
@@ -82,7 +85,8 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( TOP_GEN_STACK_INT ( &if_stack ) || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" ) )
+			if ( TOP_GEN_STACK_INT ( &if_stack ) || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
+				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "done" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;
@@ -101,7 +105,7 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
-	init_generic_stack ( argv_stack, sizeof ( int ) );
+	init_generic_stack ( argv_stack, sizeof ( char * ) );
 	
 	if ( !stringcpy ( &expcmd, command ) ) {
 		argc = -ENOMEM;
@@ -160,6 +164,20 @@ out_of_memory:
 	return -ENOMEM;
 }
 
+int system_exec_list ( void ) {
+	int rc = 0;
+	while ( prog_ctr < SIZE_GEN_STACK ( &command_list ) ) {
+		const char *command = ELEMENT_GEN_STACK_STRING ( &command_list, prog_ctr );
+		printf ( "command = [%s]\n", command );
+		printf ( "pc = %d. size of loop_stack = %d, command list = %d\n", prog_ctr, loop_stack.tos + 1, SIZE_GEN_STACK ( &command_list ) );
+		//printf ( "pc = %d. command = [%s]\n", prog_ctr, 
+		if ( ( rc = system ( command ) ) != 0 )
+			return rc;
+	}
+	printf ( "end of list: %d\n", prog_ctr );
+	return rc;
+}
+
 /**
  * Execute command line
  *
@@ -172,6 +190,12 @@ int system ( const char *command ) {
 	int argc;
 	int rc = 0;
 	struct generic_stack argv_stack;
+	
+	if ( prog_ctr == SIZE_GEN_STACK ( &command_list ) ) {
+		push_generic_stack ( &command_list, &command, 1 );
+		//printf ( "appending %s at %d\n", TOP_GEN_STACK_STRING ( &command_list ), prog_ctr );
+	}
+	
 
 	argc = expand_command ( command, &argv_stack );
 	if ( argc < 0 ) {
@@ -180,12 +204,11 @@ int system ( const char *command ) {
 		char **argv;
 		if ( ! push_generic_stack ( &argv_stack, NULL, 0 ) ) {
 			argv = ( char ** ) argv_stack.ptr;
-			argv[argc] = NULL;
 			if ( argc > 0 )
 				rc = execv ( argv[0], argv );
 		}
 	}
-	
+	prog_ctr++;
 	free_generic_stack ( &argv_stack, 1 );
 	return rc;
 }

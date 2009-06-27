@@ -15,6 +15,11 @@ int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 	if ( stack->tos >= 0 ) {
 		void *nptr;
 		memcpy ( ptr, ( void * ) ( ( (int)stack->ptr ) + stack->size * stack->tos-- ), stack->size );
+		if ( stack->tos == -1 ) {
+			free ( stack->ptr );
+			stack->ptr = NULL;
+			return 0;
+		}
 		nptr = realloc ( stack->ptr, stack->size * ( stack->tos + 1 ) );
 		if ( nptr ) {
 			stack->ptr = nptr;
@@ -30,11 +35,12 @@ int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 void free_generic_stack ( struct generic_stack *stack, int on_stack ) {
 	void *ptr = NULL;
 	if ( on_stack ) {
-		while ( !pop_generic_stack ( stack, ptr ) ) {
+		while ( !pop_generic_stack ( stack, &ptr ) ) {
 			free ( ptr );
 		}
 	}
 	free ( stack->ptr );
+	stack->ptr = NULL;
 }
 
 int push_generic_stack ( struct generic_stack *stack, void *str, int is_string ) {

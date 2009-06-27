@@ -21,6 +21,9 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack );			/* Use 
 /* convenience macros */
 #define TOP_GEN_STACK_INT( stack ) ( ( ( int * ) ( stack )->ptr )[( stack )->tos] )
 #define ELEMENT_GEN_STACK_INT( stack, pos ) ( ( ( int * ) ( stack )->ptr )[pos] )
-#define SIZE_GEN_STACK( stack ) ( stack->tos )
+#define SIZE_GEN_STACK( stack ) ( ( ( stack ) ->tos ) + 1 )
+
+#define TOP_GEN_STACK_STRING( stack ) ( ( ( char ** ) ( stack )->ptr )[( stack )->tos] )
+#define ELEMENT_GEN_STACK_STRING( stack, pos ) ( ( ( char ** ) ( stack )->ptr )[pos] )
 
 #endif

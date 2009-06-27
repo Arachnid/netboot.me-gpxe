@@ -388,7 +388,8 @@ char * parse_arith ( struct string *inp, char *orig ) {
 		free ( buffer );
 	}
 		
-	if ( err_val )	{		
+	if ( err_val )	{
+		
 		if ( tok == TOK_STRING )
 			free ( tok_value.str_value );
 		switch ( err_val ) {
