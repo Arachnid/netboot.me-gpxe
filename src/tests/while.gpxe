@@ -9,9 +9,22 @@ while $(${a} > 0)
 		echo ${a}, ${b}
 		if $(${b} == 5)
 			set b 2
+			for c in 2 3 5 7 11 13 17 19
+				echo "c = ${c}"
+			done
 			continue
 		fi
 		set b $(${b} - 1)
 	done
 	set a $(${a} - 1)
+done
+
+for i in 1 2 3 4 5 6 7 8 
+	if $(${i} == 5)
+		continue
+	fi
+	if $(${i} == 7)
+		break
+	fi
+	echo "i = ${i}"
 done

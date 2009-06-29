@@ -85,7 +85,7 @@ int execv ( const char *command, char * const argv[] ) {
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
 			if ( TOP_GEN_STACK_INT ( &if_stack ) == 1 || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
-				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "done" ) )
+				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "for" ) || !strcmp ( cmd->name, "done" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;

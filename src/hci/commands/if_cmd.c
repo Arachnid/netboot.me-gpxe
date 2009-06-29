@@ -3,12 +3,13 @@
 #include <gpxe/command.h>
 #include <gpxe/gen_stack.h>
 #include <gpxe/init.h>
+#include <gpxe/settings.h>
 
 struct generic_stack if_stack = { .ptr = NULL, .tos = -1, .size = sizeof ( int ) };
 static struct generic_stack else_stack = { .ptr = NULL, .tos = -1, .size = sizeof ( int ) };
 int if_tos = 0;
 struct generic_stack if_stack;
-struct generic_stack else_stack;
+static struct generic_stack else_stack;
 static struct generic_stack loop_stack;
 struct generic_stack command_list;
 int prog_ctr;
@@ -20,7 +21,10 @@ struct while_info {
 	int loop_start;
 	int if_pos;
 	int is_continue;
+	int cur_arg;
 };
+
+static struct while_info for_info;
 
 static int if_exec ( int argc, char **argv ) {
 	long cond;
@@ -123,8 +127,10 @@ static int while_exec ( int argc, char **argv ) {
 	w.loop_start = prog_ctr;
 	w.if_pos = if_stack.tos;
 	w.is_continue = 0;
+	w.cur_arg = 0;
 	
-	push_generic_stack ( &loop_stack, &w, 0 );
+	if ( push_generic_stack ( &loop_stack, &w, 0 ) )
+		return 1;
 	//printf ( "pc = %d. size of loop_stack = %d\n", prog_ctr, SIZE_GEN_STACK ( &loop_stack ) );
 	return 0;
 }
@@ -137,7 +143,6 @@ struct command while_command __command = {
 static int done_exec ( int argc, char **argv ) {
 	int cond;
 	int tmp_pc;
-	struct while_info pot;
 	int rc = 0;
 	if ( argc != 1 ) {
 		printf ( "Syntax: %s\n", argv[0] );
@@ -151,19 +156,21 @@ static int done_exec ( int argc, char **argv ) {
 		return 1;
 	}
 	
-	pop_generic_stack ( &if_stack, &cond );
-	pop_generic_stack ( &loop_stack, &pot );
+	if ( pop_generic_stack ( &if_stack, &cond ) || pop_generic_stack ( &loop_stack, &for_info ) )
+		return 1;
 	
-	while ( cond || pot.is_continue ) {
+	while ( cond || for_info.is_continue ) {		
 		tmp_pc = prog_ctr;
-		prog_ctr = pot.loop_start;
+		prog_ctr = for_info.loop_start;
+		
 		while ( prog_ctr < tmp_pc ) {
 			if ( ( rc = system ( ELEMENT_GEN_STACK_STRING ( &command_list, prog_ctr ) ) ) ) 
 				return rc;
 		}
-		pop_generic_stack ( &if_stack, &cond );
-		pop_generic_stack ( &loop_stack, &pot );
+		if ( pop_generic_stack ( &if_stack, &cond ) || pop_generic_stack ( &loop_stack, &for_info ) )
+			return 1;
 	}
+	for_info.cur_arg = 0;
 	return rc;
 }
 
@@ -178,6 +185,9 @@ static int break_exec ( int argc, char **argv ) {
 	if ( argc != 1 ) {
 		printf ( "Syntax: %s\n", argv[0] );
 		return 1;
+	}
+	if ( SIZE_GEN_STACK ( &loop_stack ) <= 0 ) {
+		printf ( "%s outside loop\n", argv[0] );
 	}
 	w = ( ( struct while_info * ) loop_stack.ptr + ( loop_stack.tos ) );
 	for ( pos = w->if_pos; pos < SIZE_GEN_STACK ( &if_stack ); pos++ )
@@ -206,4 +216,29 @@ static int continue_exec ( int argc, char **argv ) {
 struct command continue_command __command = {
 	.name = "continue",
 	.exec = continue_exec,
+};
+
+static int for_exec ( int argc, char **argv ) {
+	int cond;
+	int rc;
+	if ( argc < 3 ) {
+		printf ( "Syntax: for <var> in <list>\n" );
+		return 1;
+	}
+	
+	for_info.loop_start = prog_ctr;
+	for_info.cur_arg = for_info.cur_arg == 0 ? 3 : for_info.cur_arg + 1;			//for_info should either be popped by a done or for_info.cur_arg = 0
+	for_info.is_continue = 0;
+	
+	cond = TOP_GEN_STACK_INT ( &if_stack ) && ( argc > for_info.cur_arg );	
+	if ( ( rc = push_generic_stack ( &if_stack, &cond, 0 ) ) == 0 )
+		if ( ( rc = storef_named_setting ( argv[1], argv[for_info.cur_arg] ) ) == 0 ) 
+			rc = push_generic_stack ( &loop_stack, &for_info, 0 );
+	for_info.cur_arg = 0;
+	return rc;
+}
+
+struct command for_command __command = {
+	.name = "for",
+	.exec = for_exec,
 };
