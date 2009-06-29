@@ -1,10 +1,17 @@
 #!gpxe
-set a 500
+set a 10
 while $(${a} > 0)
-set b 2
-while $(${b} > 0)
-echo ${a}, ${b}
-set b $(${b} - 1)
-done
-set a $(${a} - 1)
+	if $(${a} == 3 )
+		break
+	fi
+	set b 5
+	while $(${b} > 0)
+		echo ${a}, ${b}
+		if $(${b} == 5)
+			set b 2
+			continue
+		fi
+		set b $(${b} - 1)
+	done
+	set a $(${a} - 1)
 done

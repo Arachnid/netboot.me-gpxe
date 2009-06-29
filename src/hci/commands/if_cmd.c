@@ -9,12 +9,18 @@ static struct generic_stack else_stack = { .ptr = NULL, .tos = -1, .size = sizeo
 int if_tos = 0;
 struct generic_stack if_stack;
 struct generic_stack else_stack;
-struct generic_stack loop_stack;
+static struct generic_stack loop_stack;
 struct generic_stack command_list;
 int prog_ctr;
 int isnum ( char *string, long *num );
 
 int system ( const char * );
+
+struct while_info {
+	int loop_start;
+	int if_pos;
+	int is_continue;
+};
 
 static int if_exec ( int argc, char **argv ) {
 	long cond;
@@ -92,7 +98,7 @@ void init_if ( void ) {
 	int one = 1;
 	init_generic_stack ( &if_stack, sizeof ( int ) );
 	init_generic_stack ( &else_stack, sizeof ( int ) );
-	init_generic_stack ( &loop_stack, sizeof ( int ) );
+	init_generic_stack ( &loop_stack, sizeof ( struct while_info ) );
 	init_generic_stack ( &command_list, sizeof ( char * ) );
 	prog_ctr = 0;
 	push_generic_stack ( &if_stack, &one, 0 );
@@ -105,6 +111,7 @@ struct init_fn initialise_if __init_fn ( INIT_NORMAL ) = {
 };
 
 static int while_exec ( int argc, char **argv ) {
+	struct while_info w;
 	if ( argc != 2 ) {
 		printf ( "Syntax: while <condition>\n" );
 		return 1;
@@ -112,7 +119,12 @@ static int while_exec ( int argc, char **argv ) {
 	if ( if_exec ( argc, argv ) != 0 )
 		return 1;
 	TOP_GEN_STACK_INT ( &else_stack ) = 1;
-	push_generic_stack ( &loop_stack, &prog_ctr, 0 );
+	
+	w.loop_start = prog_ctr;
+	w.if_pos = if_stack.tos;
+	w.is_continue = 0;
+	
+	push_generic_stack ( &loop_stack, &w, 0 );
 	//printf ( "pc = %d. size of loop_stack = %d\n", prog_ctr, SIZE_GEN_STACK ( &loop_stack ) );
 	return 0;
 }
@@ -125,7 +137,7 @@ struct command while_command __command = {
 static int done_exec ( int argc, char **argv ) {
 	int cond;
 	int tmp_pc;
-	int pot;
+	struct while_info pot;
 	int rc = 0;
 	if ( argc != 1 ) {
 		printf ( "Syntax: %s\n", argv[0] );
@@ -142,9 +154,9 @@ static int done_exec ( int argc, char **argv ) {
 	pop_generic_stack ( &if_stack, &cond );
 	pop_generic_stack ( &loop_stack, &pot );
 	
-	while ( cond ) {
+	while ( cond || pot.is_continue ) {
 		tmp_pc = prog_ctr;
-		prog_ctr = pot;
+		prog_ctr = pot.loop_start;
 		while ( prog_ctr < tmp_pc ) {
 			if ( ( rc = system ( ELEMENT_GEN_STACK_STRING ( &command_list, prog_ctr ) ) ) ) 
 				return rc;
@@ -158,4 +170,40 @@ static int done_exec ( int argc, char **argv ) {
 struct command done_command __command = {
 	.name = "done",
 	.exec = done_exec,
+};
+
+static int break_exec ( int argc, char **argv ) {
+	int pos;
+	struct while_info *w;
+	if ( argc != 1 ) {
+		printf ( "Syntax: %s\n", argv[0] );
+		return 1;
+	}
+	w = ( ( struct while_info * ) loop_stack.ptr + ( loop_stack.tos ) );
+	for ( pos = w->if_pos; pos < SIZE_GEN_STACK ( &if_stack ); pos++ )
+		ELEMENT_GEN_STACK_INT ( &if_stack, pos ) = 0;
+	return 0;
+}
+
+struct command break_command __command = {
+	.name = "break",
+	.exec = break_exec,
+};
+
+static int continue_exec ( int argc, char **argv ) {
+	struct while_info *w;
+	if ( argc != 1 ) {
+		printf ( "Syntax: %s\n", argv[0] );
+		return 1;
+	}
+	if ( break_exec ( argc, argv ) )
+		return 1;
+	w = ( ( struct while_info * ) loop_stack.ptr + ( loop_stack.tos ) );
+	w->is_continue = 1;
+	return 0;
+}
+
+struct command continue_command __command = {
+	.name = "continue",
+	.exec = continue_exec,
 };
