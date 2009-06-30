@@ -38,7 +38,7 @@ static int if_exec ( int argc, char **argv ) {
 		printf ( "non-numeric condition: %s\n", argv[1] );
 		return 1;
 	}
-	cond = TOP_GEN_STACK_INT ( &if_stack ) ? ( cond ? 1 : 0 ) : 0;
+	cond = TOP_GEN_STACK_INT ( &if_stack ) && cond;
 	if ( ( push_generic_stack ( &else_stack, &zero, 0 ) < 0 ) || ( push_generic_stack ( &if_stack, &cond, 0 ) < 0 ) ) {
 		free_generic_stack ( &if_stack, 0 );
 		free_generic_stack ( &else_stack, 0 );
@@ -86,6 +86,7 @@ static int else_exec ( int argc, char **argv ) {
 		printf ( "else without if\n" );
 		return 1;
 	}
+	TOP_GEN_STACK_INT ( &else_stack ) = 1;
 	
 	if ( ELEMENT_GEN_STACK_INT ( &if_stack, if_stack.tos - 1 ) )
 		TOP_GEN_STACK_INT ( &if_stack ) = !TOP_GEN_STACK_INT ( &if_stack );
@@ -241,4 +242,18 @@ static int for_exec ( int argc, char **argv ) {
 struct command for_command __command = {
 	.name = "for",
 	.exec = for_exec,
+};
+
+static int do_exec ( int argc, char **argv ) {
+	if ( argc != 1 ) {
+		printf ( "Syntax: %s\n", argv[0] );
+		return 1;
+	}
+	/* This is just a nop, to make the syntax similar to the shell */
+	return 0;
+}
+
+struct command do_command __command = {
+	.name = "do",
+	.exec = do_exec,
 };
