@@ -47,6 +47,11 @@ const struct char_table table[6] = {
 	{ .token = '\t', .type = ENDTOK }
 };
 
+const struct char_table dollar_table[2] = {
+	{ .token = '}', .type = ENDTOK },
+	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+};
+
 char * string3cat ( struct string *s1, const char *s2, const char *s3 ) { /* The len is the size of s1 */
 	char *tmp = s1->value;
 	asprintf ( &s1->value, "%s%s%s", s1->value, s2, s3 );
@@ -90,34 +95,29 @@ char * dollar_expand ( struct string *s, char *inp ) {
 	char *end;
 	
 	len = inp - s->value;
-	
+
 	if ( inp[1] == '{' ) {
-		*inp = 0;
-		name = ( inp + 2 );
-
-		/* Locate closer */
-		end = strstr ( name, "}" );
-		if ( ! end ) {
-			printf ( "can't find ending }\n" );
-			free_string ( s );
-			return end;
-		}
-		*end = 0;
-		end += 1;
-		
-		/* Determine setting length */
-		setting_len = fetchf_named_setting ( name, NULL, 0 );
-		if ( setting_len < 0 )
-			setting_len = 0; /* Treat error as empty setting */
-
-		/* Read setting into buffer */
-		{
-			char expdollar[setting_len + 1];
-			expdollar[0] = '\0';
-			fetchf_named_setting ( name, expdollar,
-							setting_len + 1 );
-			if ( string3cat ( s, expdollar, end ) )
-				end = s->value + len + strlen ( expdollar );
+		int success;
+		end = expand_string ( s, inp + 2, dollar_table, 2, 1, &success );
+		inp = s->value + len;
+		if ( end ) {
+			*inp = 0;
+			*end++ = 0;
+			name = inp + 2;
+			/* Determine setting length */
+			setting_len = fetchf_named_setting ( name, NULL, 0 );
+			if ( setting_len < 0 )
+				setting_len = 0; /* Treat error as empty setting */
+			
+			/* Read setting into buffer */
+			{
+				char expdollar[setting_len + 1];
+				expdollar[0] = '\0';
+				fetchf_named_setting ( name, expdollar,
+								setting_len + 1 );
+				if ( string3cat ( s, expdollar, end ) )
+					end = s->value + len + strlen ( expdollar );
+			}
 		}
 		return end;
 	} else if ( inp[1] == '(' ) {
