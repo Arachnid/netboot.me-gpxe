@@ -31,8 +31,6 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/parse.h>
 #include <gpxe/gen_stack.h>
 
-#include <lib.h>
-
 /** @file
  *
  * Command execution
@@ -152,15 +150,6 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 	}
 	free_string ( &expcmd );
 	return argc;
-
-out_of_memory:
-	while ( *argv_start != argv ) {
-		struct argument *tmp;
-		tmp = *argv_start;
-		*argv_start = ( *argv_start ) -> next;
-	}
-	free ( argv );
-	return -ENOMEM;
 }
 
 /**
@@ -176,9 +165,10 @@ int system ( const char *command ) {
 	int rc = 0;
 	struct generic_stack argv_stack;
 	
-	if ( prog_ctr == SIZE_GEN_STACK ( &command_list ) ) {
-		push_generic_stack ( &command_list, &command, 1 );
-		//printf ( "appending %s at %d\n", TOP_GEN_STACK_STRING ( &command_list ), prog_ctr );
+	if ( prog_ctr >= SIZE_GEN_STACK ( &command_list ) ) {
+		prog_ctr = SIZE_GEN_STACK ( &command_list );
+		if ( push_generic_stack ( &command_list, &command, 1 ) < 0 )
+			printf ( "error in adding command: [%s]\n", command );
 	}
 
 	argc = expand_command ( command, &argv_stack );

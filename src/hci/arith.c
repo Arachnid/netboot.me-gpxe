@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <errno.h>
 
-#include <lib.h>
 #include <gpxe/parse.h>
 
 #define NUM_OPS		20

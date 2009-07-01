@@ -14,7 +14,7 @@ void init_generic_stack ( struct generic_stack *stack, size_t size ) {
 int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 	if ( stack->tos >= 0 ) {
 		void *nptr;
-		memcpy ( ptr, ( void * ) ( stack->ptr + stack->size * stack->tos-- ), stack->size );
+		memcpy ( ptr, stack->ptr + stack->size * stack->tos--, stack->size );
 		if ( stack->tos == -1 ) {
 			free ( stack->ptr );
 			stack->ptr = NULL;
@@ -53,9 +53,9 @@ int push_generic_stack ( struct generic_stack *stack, void *str, int is_string )
 	stack->ptr = nptr;
 	stack->tos++;
 	if ( !is_string ) 
-		memcpy ( ( void * ) ( stack->ptr + stack->size * stack->tos ), str, stack->size );
+		memcpy ( stack->ptr + stack->size * stack->tos, str, stack->size );
 	else {
-		if ( ( TOP_GEN_STACK_STRING ( stack ) = strdup ( * ( ( char ** ) str ) ) ) == NULL )
+		if ( ( TOP_GEN_STACK_STRING ( stack ) = strdup ( *( char ** ) str ) ) == NULL )
 			return -ENOMEM;
 	}
 	return 0;

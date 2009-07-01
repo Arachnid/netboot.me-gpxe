@@ -5,8 +5,6 @@
 #include <ctype.h>
 #include <errno.h>
 
-#include <lib.h>
-
 struct generic_stack {
 	void *ptr;
 	int tos;
