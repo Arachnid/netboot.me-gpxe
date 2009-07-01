@@ -5,22 +5,21 @@
 
 #include <gpxe/gen_stack.h>
 
-void init_generic_stack ( struct generic_stack *stack, size_t size ) {
+void init_generic_stack ( struct generic_stack *stack ) {
 	stack->ptr = NULL;
 	stack->tos = -1;
-	stack->size = size;
 }
 
-int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
+int pop_generic_stack_ ( struct generic_stack *stack, void *ptr, size_t size ) {
 	if ( stack->tos >= 0 ) {
 		void *nptr;
-		memcpy ( ptr, stack->ptr + stack->size * stack->tos--, stack->size );
+		memcpy ( ptr, stack->ptr + size * stack->tos--, size );
 		if ( stack->tos == -1 ) {
 			free ( stack->ptr );
 			stack->ptr = NULL;
 			return 0;
 		}
-		nptr = realloc ( stack->ptr, stack->size * ( stack->tos + 1 ) );
+		nptr = realloc ( stack->ptr, size * ( stack->tos + 1 ) );
 		if ( nptr ) {
 			stack->ptr = nptr;
 			if ( stack->tos == -1 )
@@ -32,10 +31,10 @@ int pop_generic_stack ( struct generic_stack *stack, void *ptr ) {
 		return -ENOMEM;
 }
 
-void free_generic_stack ( struct generic_stack *stack, int on_stack ) {
+void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size ) {
 	void *ptr = NULL;
 	if ( on_stack ) {
-		while ( !pop_generic_stack ( stack, &ptr ) ) {
+		while ( !pop_generic_stack_ ( stack, &ptr, size ) ) {
 			free ( ptr );
 		}
 	}
@@ -43,9 +42,9 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack ) {
 	stack->ptr = NULL;
 }
 
-int push_generic_stack ( struct generic_stack *stack, void *str, int is_string ) {
+int push_generic_stack_ ( struct generic_stack *stack, void *str, int is_string, size_t size ) {
 	char **nptr;
-	nptr = realloc ( stack->ptr, stack->size * ( stack->tos + 2 ) );
+	nptr = realloc ( stack->ptr, size * ( stack->tos + 2 ) );
 	if ( !nptr ) {
 		printf ( "error in resizing stack\n" );
 		return -ENOMEM;
@@ -53,10 +52,12 @@ int push_generic_stack ( struct generic_stack *stack, void *str, int is_string )
 	stack->ptr = nptr;
 	stack->tos++;
 	if ( !is_string ) 
-		memcpy ( stack->ptr + stack->size * stack->tos, str, stack->size );
+		memcpy ( stack->ptr + size * stack->tos, str, size );
 	else {
-		if ( ( TOP_GEN_STACK_STRING ( stack ) = strdup ( *( char ** ) str ) ) == NULL )
+		if ( ( TOP_GEN_STACK_STRING ( stack ) = strdup ( *( char ** ) str ) ) == NULL ) {
 			return -ENOMEM;
+		}
 	}
+	//printf ( "[%s] allocated\n", TOP_GEN_STACK_STRING ( stack ) );
 	return 0;
 }

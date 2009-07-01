@@ -102,7 +102,7 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
-	init_generic_stack ( argv_stack, sizeof ( char * ) );
+	init_generic_stack ( argv_stack );
 	
 	if ( !stringcpy ( &expcmd, command ) ) {
 		argc = -ENOMEM;
@@ -164,7 +164,7 @@ int system ( const char *command ) {
 	int argc;
 	int rc = 0;
 	struct generic_stack argv_stack;
-	
+	DBG ( "command = [%s]\n", command );
 	if ( prog_ctr >= SIZE_GEN_STACK ( &command_list ) ) {
 		prog_ctr = SIZE_GEN_STACK ( &command_list );
 		if ( push_generic_stack ( &command_list, &command, 1 ) < 0 )
@@ -176,14 +176,15 @@ int system ( const char *command ) {
 		rc = argc;
 	} else {
 		char **argv;
-		if ( ! push_generic_stack ( &argv_stack, NULL, 0 ) ) {
-			argv = ( char ** ) argv_stack.ptr;
+		if ( !push_generic_stack ( &argv_stack, ( char ** ) NULL, 0 ) ) {
+			argv = argv_stack.ptr;
 			if ( argc > 0 )
 				rc = execv ( argv[0], argv );
-		}
+		} else
+			rc = -ENOMEM;
 	}
 	prog_ctr++;
-	free_generic_stack ( &argv_stack, 1 );
+	free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );
 	return rc;
 }
 

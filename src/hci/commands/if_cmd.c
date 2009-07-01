@@ -28,10 +28,10 @@ static struct while_info for_info;
 static int push_if ( int cond ) {
 	int zero = 0;
 	cond = TOP_GEN_STACK_INT ( &if_stack ) && cond;
-	assert ( if_stack.tos == else_stack.tos );
+	assert ( if_stack.tos == else_stack.tos ); 
 	if ( ( push_generic_stack ( &else_stack, &zero, 0 ) < 0 ) || ( push_generic_stack ( &if_stack, &cond, 0 ) < 0 ) ) {
-		free_generic_stack ( &if_stack, 0 );
-		free_generic_stack ( &else_stack, 0 );
+		free_generic_stack ( &if_stack, 0, 0 );
+		free_generic_stack ( &else_stack, 0, 0 );
 		return 1;
 	}
 	return 0;
@@ -43,8 +43,8 @@ static int pop_if ( int *cond ) {
 	if ( if_stack.tos > 0 ) {
 		if ( ( pop_generic_stack ( &if_stack, &if_c ) < 0 ) || ( pop_generic_stack ( &else_stack, &else_c ) < 0 ) ) {
 			DBG ( "error in popping stack\n" );
-			free_generic_stack ( &if_stack, 0 );
-			free_generic_stack ( &else_stack, 0 );
+			free_generic_stack ( &if_stack, 0, 0 );
+			free_generic_stack ( &else_stack, 0, 0 );
 			return 1;
 		}
 	}
@@ -114,10 +114,10 @@ struct command else_command __command = {
 
 void init_if ( void ) {
 	int one = 1;
-	init_generic_stack ( &if_stack, sizeof ( int ) );
-	init_generic_stack ( &else_stack, sizeof ( int ) );
-	init_generic_stack ( &loop_stack, sizeof ( struct while_info ) );
-	init_generic_stack ( &command_list, sizeof ( char * ) );
+	init_generic_stack ( &if_stack );
+	init_generic_stack ( &else_stack );
+	init_generic_stack ( &loop_stack );
+	init_generic_stack ( &command_list );
 	prog_ctr = 0;
 	push_generic_stack ( &if_stack, &one, 0 );
 	push_generic_stack ( &else_stack, &one, 0 );
@@ -142,9 +142,8 @@ static int while_exec ( int argc, char **argv ) {
 	w.if_pos = if_stack.tos;
 	w.is_continue = 0;
 	w.cur_arg = 0;
-	
 	if ( push_generic_stack ( &loop_stack, &w, 0 ) ) {
-		free_generic_stack ( &loop_stack, 0 );
+		free_generic_stack ( &loop_stack, 0, 0 );
 		return 1;
 	}
 	return 0;
@@ -175,11 +174,12 @@ static int done_exec ( int argc, char **argv ) {
 	while ( cond || for_info.is_continue ) {
 		tmp_pc = prog_ctr;
 		prog_ctr = for_info.loop_start;
-
+		DBG ( "old pc: %d. new pc: %d\n", tmp_pc, prog_ctr );
 		while ( prog_ctr < tmp_pc ) {
 			if ( ( rc = system ( ELEMENT_GEN_STACK_STRING ( &command_list, prog_ctr ) ) ) ) 
 				return rc;
 		}
+		prog_ctr = tmp_pc;
 		if ( pop_if ( &cond ) || pop_generic_stack ( &loop_stack, &for_info ) )
 			return 1;
 	}
@@ -242,6 +242,7 @@ static int for_exec ( int argc, char **argv ) {
 	cond = TOP_GEN_STACK_INT ( &if_stack ) && ( argc > for_info.cur_arg );
 	if ( ( rc = push_if ( cond ) ) == 0 ) {
 		for_info.if_pos = if_stack.tos;
+		DBG ( "setting %s to %s\n", argv[1], argv[for_info.cur_arg] );
 		if ( ( rc = storef_named_setting ( argv[1], argv[for_info.cur_arg] ) ) == 0 ) 
 			rc = push_generic_stack ( &loop_stack, &for_info, 0 );
 	}
