@@ -1,16 +1,11 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <gpxe/command.h>
 #include <gpxe/gen_stack.h>
 #include <gpxe/init.h>
 #include <gpxe/settings.h>
 
-struct generic_stack if_stack;
-static struct generic_stack else_stack;
-struct generic_stack if_stack;
-static struct generic_stack else_stack;
-static struct generic_stack loop_stack;
-struct generic_stack command_list;
 int prog_ctr;
 int isnum ( char *string, long *num );
 
@@ -25,32 +20,33 @@ struct while_info {
 
 static struct while_info for_info;
 
+INIT_STACK ( if_stack, int );
+STATIC_INIT_STACK ( else_stack, int );
+STATIC_INIT_STACK ( loop_stack, struct while_info );
+INIT_STACK ( command_list, char * );
+
 static int push_if ( int cond ) {
-	int zero = 0;
-	cond = TOP_GEN_STACK_INT ( &if_stack ) && cond;
-	assert ( if_stack.tos == else_stack.tos ); 
-	if ( ( push_generic_stack ( &else_stack, &zero, 0 ) < 0 ) || ( push_generic_stack ( &if_stack, &cond, 0 ) < 0 ) ) {
-		free_generic_stack ( &if_stack, 0, 0 );
-		free_generic_stack ( &else_stack, 0, 0 );
-		return 1;
-	}
-	return 0;
+	int rc;
+	cond = if_stack[COUNT ( if_stack ) ] && cond;
+	assert ( COUNT ( if_stack ) == COUNT ( else_stack ) );
+	PUSH_STACK ( if_stack, cond );
+	PUSH_STACK ( else_stack, 0 );
+	rc = COUNT ( if_stack ) < 0 || COUNT ( else_stack ) < 0;
+	DBG ( "if_stack size = %d, else_stack size = %d. rc = %d\n", COUNT ( if_stack ), COUNT ( else_stack ), rc );
+	return rc;
 }
 
 static int pop_if ( int *cond ) {
 	int else_c, if_c;
-	assert ( if_stack.tos == else_stack.tos );
-	if ( if_stack.tos > 0 ) {
-		if ( ( pop_generic_stack ( &if_stack, &if_c ) < 0 ) || ( pop_generic_stack ( &else_stack, &else_c ) < 0 ) ) {
-			DBG ( "error in popping stack\n" );
-			free_generic_stack ( &if_stack, 0, 0 );
-			free_generic_stack ( &else_stack, 0, 0 );
-			return 1;
-		}
+	assert ( COUNT ( if_stack ) == COUNT ( else_stack ) );
+	if ( COUNT ( if_stack ) > 0 ) {
+		POP_STACK ( if_stack, if_c );
+		POP_STACK ( else_stack, else_c );
+		if ( cond )
+			*cond = if_c;
+		return 0;
 	}
-	if ( cond )
-		*cond = if_c;
-	return 0;
+	return 1;	
 }
 
 static int if_exec ( int argc, char **argv ) {
@@ -78,7 +74,7 @@ static int fi_exec ( int argc, char **argv ) {
 		return 1;
 	}
 	
-	if ( if_stack.tos > 0 && ( SIZE_GEN_STACK ( &loop_stack ) <= 0 || if_stack.tos != ( ( struct while_info * ) loop_stack.ptr )[loop_stack.tos].if_pos ) )
+	if ( COUNT ( if_stack ) > 0 && ( COUNT ( loop_stack ) < 0 || COUNT ( if_stack ) != loop_stack[COUNT ( loop_stack )].if_pos ) )
 		return pop_if ( NULL );
 	printf ( "fi without if\n" );
 	return 1;
@@ -95,14 +91,14 @@ static int else_exec ( int argc, char **argv ) {
 		return 1;
 	}
 
-	if ( TOP_GEN_STACK_INT ( &else_stack ) != 0 || if_stack.tos <= 0 ) {
+	if ( else_stack[COUNT ( else_stack ) ] != 0 || COUNT ( if_stack ) <= 0 ) {
 		printf ( "else without if\n" );
 		return 1;
 	}
-	TOP_GEN_STACK_INT ( &else_stack ) = 1;
+	else_stack[COUNT ( else_stack ) ] = 1;
 	
-	if ( ELEMENT_GEN_STACK_INT ( &if_stack, if_stack.tos - 1 ) )
-		TOP_GEN_STACK_INT ( &if_stack ) = !TOP_GEN_STACK_INT ( &if_stack );
+	if ( if_stack[COUNT ( if_stack ) - 1] )
+		if_stack[COUNT ( if_stack ) ] = ! if_stack[COUNT ( if_stack ) ];
 	
 	return 0;
 }
@@ -113,14 +109,9 @@ struct command else_command __command = {
 };
 
 void init_if ( void ) {
-	int one = 1;
-	init_generic_stack ( &if_stack );
-	init_generic_stack ( &else_stack );
-	init_generic_stack ( &loop_stack );
-	init_generic_stack ( &command_list );
 	prog_ctr = 0;
-	push_generic_stack ( &if_stack, &one, 0 );
-	push_generic_stack ( &else_stack, &one, 0 );
+	PUSH_STACK ( if_stack, 1 );
+	PUSH_STACK ( else_stack, 1 );
 	return;
 }
 
@@ -136,17 +127,14 @@ static int while_exec ( int argc, char **argv ) {
 	}
 	if ( if_exec ( argc, argv ) != 0 )
 		return 1;
-	TOP_GEN_STACK_INT ( &else_stack ) = 1;
+	else_stack[COUNT ( else_stack )] = 1;
 	
 	w.loop_start = prog_ctr;
-	w.if_pos = if_stack.tos;
+	w.if_pos = COUNT ( if_stack );
 	w.is_continue = 0;
 	w.cur_arg = 0;
-	if ( push_generic_stack ( &loop_stack, &w, 0 ) ) {
-		free_generic_stack ( &loop_stack, 0, 0 );
-		return 1;
-	}
-	return 0;
+	PUSH_STACK ( loop_stack, w );
+	return ( loop_stack == NULL );
 }
 
 struct command while_command __command = {
@@ -163,12 +151,12 @@ static int done_exec ( int argc, char **argv ) {
 		return 1;
 	}
 	
-	if ( SIZE_GEN_STACK ( &loop_stack ) == 0 ) {
+	if ( COUNT ( loop_stack ) < 0 ) {
 		printf ( "done outside a loop\n" );
 		return 1;
 	}
-	
-	if ( pop_if ( &cond ) || pop_generic_stack ( &loop_stack, &for_info ) )
+	POP_STACK ( loop_stack, for_info );
+	if ( pop_if ( &cond ) )
 		return 1;
 	
 	while ( cond || for_info.is_continue ) {
@@ -176,13 +164,17 @@ static int done_exec ( int argc, char **argv ) {
 		prog_ctr = for_info.loop_start;
 		DBG ( "old pc: %d. new pc: %d\n", tmp_pc, prog_ctr );
 		while ( prog_ctr < tmp_pc ) {
-			if ( ( rc = system ( ELEMENT_GEN_STACK_STRING ( &command_list, prog_ctr ) ) ) ) 
+			if ( ( rc = system ( command_list[prog_ctr] ) ) ) {
+				DBG ( "bailing out at [%s]\n", command_list[prog_ctr - 1] );
 				return rc;
+			}
 		}
 		prog_ctr = tmp_pc;
-		if ( pop_if ( &cond ) || pop_generic_stack ( &loop_stack, &for_info ) )
+		POP_STACK ( loop_stack, for_info );
+		if ( pop_if ( &cond ) )
 			return 1;
 	}
+	DBG ( "exited loop. stack size = %d\n", COUNT ( loop_stack ) + 1 );
 	for_info.cur_arg = 0;
 	return rc;
 }
@@ -194,17 +186,17 @@ struct command done_command __command = {
 
 static int break_exec ( int argc, char **argv ) {
 	int pos;
-	struct while_info *w;
+	int start;
 	if ( argc != 1 ) {
 		printf ( "Usage: %s\n", argv[0] );
 		return 1;
 	}
-	if ( SIZE_GEN_STACK ( &loop_stack ) <= 0 ) {
+	if ( COUNT ( loop_stack ) < 0 ) {
 		printf ( "%s outside loop\n", argv[0] );
 	}
-	w = ( ( struct while_info * ) loop_stack.ptr + ( loop_stack.tos ) );
-	for ( pos = w->if_pos; pos < SIZE_GEN_STACK ( &if_stack ); pos++ )
-		ELEMENT_GEN_STACK_INT ( &if_stack, pos ) = 0;
+	start = loop_stack[COUNT ( loop_stack )].if_pos;
+	for ( pos = start; pos <= COUNT ( if_stack ); pos++ )
+		if_stack[pos] = 0;
 	return 0;
 }
 
@@ -217,7 +209,7 @@ static int continue_exec ( int argc, char **argv ) {
 	struct while_info *w;
 	if ( break_exec ( argc, argv ) )
 		return 1;
-	w = ( ( struct while_info * ) loop_stack.ptr + ( loop_stack.tos ) );
+	w = loop_stack + COUNT ( loop_stack );
 	w->is_continue = 1;
 	return 0;
 }
@@ -239,12 +231,14 @@ static int for_exec ( int argc, char **argv ) {
 	for_info.cur_arg = for_info.cur_arg == 0 ? 3 : for_info.cur_arg + 1;			//for_info should either be popped by a done or for_info.cur_arg = 0
 	for_info.is_continue = 0;
 	
-	cond = TOP_GEN_STACK_INT ( &if_stack ) && ( argc > for_info.cur_arg );
+	cond = if_stack[COUNT ( if_stack ) ] && ( argc > for_info.cur_arg );
 	if ( ( rc = push_if ( cond ) ) == 0 ) {
-		for_info.if_pos = if_stack.tos;
+		for_info.if_pos = COUNT ( if_stack );
 		DBG ( "setting %s to %s\n", argv[1], argv[for_info.cur_arg] );
-		if ( ( rc = storef_named_setting ( argv[1], argv[for_info.cur_arg] ) ) == 0 ) 
-			rc = push_generic_stack ( &loop_stack, &for_info, 0 );
+		if ( ( rc = storef_named_setting ( argv[1], argv[for_info.cur_arg] ) ) == 0 ) {
+			PUSH_STACK ( loop_stack, for_info );
+			rc = ( loop_stack == NULL );
+		}
 	}
 	for_info.cur_arg = 0;
 	return rc;

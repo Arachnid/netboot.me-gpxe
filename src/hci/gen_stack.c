@@ -5,6 +5,7 @@
 
 #include <gpxe/gen_stack.h>
 
+#if 0
 void init_generic_stack ( struct generic_stack *stack ) {
 	stack->ptr = NULL;
 	stack->tos = -1;
@@ -61,3 +62,4 @@ int push_generic_stack_ ( struct generic_stack *stack, void *str, int is_string,
 	//printf ( "[%s] allocated\n", TOP_GEN_STACK_STRING ( stack ) );
 	return 0;
 }
+#endif

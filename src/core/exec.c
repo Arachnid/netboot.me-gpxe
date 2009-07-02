@@ -41,8 +41,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 int optind;
 int nextchar;
 
-extern struct generic_stack if_stack;
-extern struct generic_stack command_list;
+EXTERN_INIT_STACK ( if_stack, int );
+EXTERN_INIT_STACK ( command_list, char * );
 extern int prog_ctr;
 
 /**
@@ -82,7 +82,7 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( TOP_GEN_STACK_INT ( &if_stack ) == 1 || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
+			if ( if_stack[COUNT ( if_stack )] == 1 || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
 				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "for" ) || !strcmp ( cmd->name, "done" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
@@ -94,15 +94,16 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-static int expand_command ( const char *command, struct generic_stack *argv_stack ) {
+static int expand_command ( const char *command, char ***argv_stack, int *argv_count ) {
 	char *head, *end;
 	int success;
 	int argc;
 	
+	INIT_STACK ( temp_stack, char * );
+	
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
-	init_generic_stack ( argv_stack );
 	
 	if ( !stringcpy ( &expcmd, command ) ) {
 		argc = -ENOMEM;
@@ -130,7 +131,9 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 				char *argv = expcmd.value;
 				argc++;
 				expcmd.value = NULL;
-				if ( push_generic_stack ( argv_stack, &argv, 0 ) < 0 || !stringcpy ( &expcmd, end ) ) {
+				PUSH_STACK ( temp_stack, argv );
+				if ( !temp_stack || !stringcpy ( &expcmd, end ) ) {
+					DBG ( "out of memory while pushing: %s\n", argv );
 					argc = -ENOMEM;
 					break;
 				}
@@ -148,6 +151,8 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 		}
 		head = expcmd.value;
 	}
+	*argv_stack = temp_stack;
+	*argv_count = COUNT ( temp_stack );
 	free_string ( &expcmd );
 	return argc;
 }
@@ -163,28 +168,27 @@ static int expand_command ( const char *command, struct generic_stack *argv_stac
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	struct generic_stack argv_stack;
+	INIT_STACK ( argv_stack, char * );
 	DBG ( "command = [%s]\n", command );
-	if ( prog_ctr >= SIZE_GEN_STACK ( &command_list ) ) {
-		prog_ctr = SIZE_GEN_STACK ( &command_list );
-		if ( push_generic_stack ( &command_list, &command, 1 ) < 0 )
-			printf ( "error in adding command: [%s]\n", command );
+	if ( prog_ctr > COUNT ( command_list ) ) {
+		prog_ctr = COUNT ( command_list ) + 1;
+		PUSH_STACK_STRING ( command_list, command );
 	}
 
-	argc = expand_command ( command, &argv_stack );
+	argc = expand_command ( command, &argv_stack, &COUNT ( argv_stack ) );
 	if ( argc < 0 ) {
 		rc = argc;
 	} else {
-		char **argv;
-		if ( !push_generic_stack ( &argv_stack, ( char ** ) NULL, 0 ) ) {
-			argv = argv_stack.ptr;
+		PUSH_STACK ( argv_stack, NULL );
+		if ( argv_stack ) {
 			if ( argc > 0 )
-				rc = execv ( argv[0], argv );
+				rc = execv ( argv_stack[0], argv_stack );
 		} else
 			rc = -ENOMEM;
 	}
 	prog_ctr++;
-	free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );
+	//free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );
+	FREE_STACK_STRING ( argv_stack );
 	return rc;
 }
 
