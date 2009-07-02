@@ -42,10 +42,8 @@ int optind;
 int nextchar;
 
 EXTERN_INIT_STACK ( if_stack, int, 10 );
-EXTERN_INIT_STACK ( command_list, char *, 2000 );
 extern int COUNT ( loop_stack );
-extern int prog_ctr;
-extern int last_pc;
+extern struct command_entry *cur_command;
 
 /**
  * Execute command
@@ -175,13 +173,17 @@ int system ( const char *command ) {
 	struct command_entry *c;
 	INIT_STACK ( argv_stack, char *, 20 );
 	DBG ( "command = [%s]\n", command );
-	if ( prog_ctr > last_pc ) {
-		c = malloc ( sizeof ( struct command_entry ) );
-		c->line = strdup ( command );
-		c->pc = prog_ctr = ++last_pc;
-		list_add_tail ( &c->neighbours, &start_command.neighbours );
-	} while ( 0 )
-		DBG ( "pc: %d. command: [%s]\n", prog_ctr, c->line );
+	if ( cur_command == &start_command ) {
+		if ( ( c = malloc ( sizeof ( struct command_entry ) + strlen ( command ) ) ) ) {
+			strcpy ( c->line, command );
+			list_add_tail ( &c->neighbours, &start_command.neighbours );
+			DBG ( "stored: [%s]\n", c->line );
+			cur_command = c;
+		} else {
+			DBG ( "failed to store [%s]\n", command );
+			return -ENOMEM;
+		}
+	}
 	argc = expand_command ( command, argv_stack, &COUNT ( argv_stack ) );
 	if ( argc < 0 ) {
 		rc = argc;
@@ -190,8 +192,7 @@ int system ( const char *command ) {
 		if ( argc > 0 )
 			rc = execv ( argv_stack[0], argv_stack );
 	}
-	prog_ctr++;
-	//free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );
+	cur_command = list_entry ( cur_command->neighbours.next, struct command_entry, neighbours );
 	FREE_STACK_STRING ( argv_stack );
 	return rc;
 }

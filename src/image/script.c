@@ -30,6 +30,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <ctype.h>
 #include <errno.h>
 #include <gpxe/image.h>
+#include <gpxe/gen_stack.h>
 
 struct image_type script_image_type __image_type ( PROBE_NORMAL );
 
@@ -49,6 +50,7 @@ static int script_exec ( struct image *image ) {
 	 * doesn't throw us into an execution loop.
 	 */
 	unregister_image ( image );
+	free_command_list();
 
 	while ( offset < image->len ) {
 	

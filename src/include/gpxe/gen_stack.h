@@ -73,10 +73,11 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size
 } while ( 0 );
 
 struct command_entry {
-	char *line;
-	int pc;
 	struct list_head neighbours;
+	char line[1];
 };
 extern struct command_entry start_command;
+
+void free_command_list();
 
 #endif
