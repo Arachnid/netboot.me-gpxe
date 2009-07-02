@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <gpxe/list.h>
 
 #if 0
 struct generic_stack {
@@ -60,11 +61,22 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size
 	COUNT ( stack ) -= 1;							\
 } while ( 0 );
 
+#define FREE_STACK( stack ) do {						\
+	COUNT ( stack ) = -1;							\
+} while ( 0 );
+
 #define FREE_STACK_STRING( stack ) do {				\
 	int i;											\
 	for ( i = 0; i <= COUNT ( stack ); i++ )				\
 		free ( stack[i] );							\
+	FREE_STACK ( stack );							\
 } while ( 0 );
 
+struct command_entry {
+	char *line;
+	int pc;
+	struct list_head neighbours;
+};
+extern struct command_entry start_command;
 
 #endif

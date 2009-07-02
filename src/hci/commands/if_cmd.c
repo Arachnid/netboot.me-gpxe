@@ -19,11 +19,19 @@ struct while_info {
 };
 
 static struct while_info for_info;
+struct command_entry start_command = {
+	.line = "",
+	.pc = -1,
+	.neighbours = {
+		.prev = &( start_command.neighbours ),
+		.next = &( start_command.neighbours ),
+	},
+};
 
 INIT_STACK ( if_stack, int, 10 );
 STATIC_INIT_STACK ( else_stack, int, 10 );
-STATIC_INIT_STACK ( loop_stack, struct while_info, 10 );
-INIT_STACK ( command_list, char *, 2000 );
+INIT_STACK ( loop_stack, struct while_info, 10 );
+int last_pc = -1;
 
 static int push_if ( int cond ) {
 	int rc;
@@ -164,8 +172,15 @@ static int done_exec ( int argc, char **argv ) {
 		prog_ctr = for_info.loop_start;
 		DBG ( "old pc: %d. new pc: %d\n", tmp_pc, prog_ctr );
 		while ( prog_ctr < tmp_pc ) {
-			if ( ( rc = system ( command_list[prog_ctr] ) ) ) {
-				DBG ( "bailing out at [%s]\n", command_list[prog_ctr - 1] );
+			struct command_entry *ncommand = NULL;
+			struct list_head *list;
+			list_for_each ( list, &start_command.neighbours ) {
+				ncommand = list_entry ( list, struct command_entry, neighbours );
+				if ( ncommand->pc == prog_ctr )
+					break;
+			}
+			if ( ( rc = system ( ncommand->line ) ) ) {
+				DBG ( "bailing out at [%s]\n", ncommand->line );
 				return rc;
 			}
 		}

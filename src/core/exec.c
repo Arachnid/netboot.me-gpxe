@@ -43,7 +43,9 @@ int nextchar;
 
 EXTERN_INIT_STACK ( if_stack, int, 10 );
 EXTERN_INIT_STACK ( command_list, char *, 2000 );
+extern int COUNT ( loop_stack );
 extern int prog_ctr;
+extern int last_pc;
 
 /**
  * Execute command
@@ -100,7 +102,7 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 	int argc;
 	int i;
 	
-	INIT_STACK ( temp_stack, char *, 10 );
+	INIT_STACK ( temp_stack, char *, 20 );
 	
 	struct string expcmd = { .value = NULL };
 	
@@ -152,7 +154,7 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 		}
 		head = expcmd.value;
 	}
-	for ( i = 0; i < 10; i++ )
+	for ( i = 0; i < 20; i++ )
 		argv_stack[i] = temp_stack[i];
 	*argv_count = COUNT ( temp_stack );
 	free_string ( &expcmd );
@@ -170,20 +172,23 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	INIT_STACK ( argv_stack, char *, 10 );
+	struct command_entry *c;
+	INIT_STACK ( argv_stack, char *, 20 );
 	DBG ( "command = [%s]\n", command );
-	if ( prog_ctr > COUNT ( command_list ) ) {
-		prog_ctr = COUNT ( command_list ) + 1;
-		PUSH_STACK_STRING ( command_list, command );
-	}
-
+	if ( prog_ctr > last_pc ) {
+		c = malloc ( sizeof ( struct command_entry ) );
+		c->line = strdup ( command );
+		c->pc = prog_ctr = ++last_pc;
+		list_add_tail ( &c->neighbours, &start_command.neighbours );
+	} while ( 0 )
+		DBG ( "pc: %d. command: [%s]\n", prog_ctr, c->line );
 	argc = expand_command ( command, argv_stack, &COUNT ( argv_stack ) );
 	if ( argc < 0 ) {
 		rc = argc;
-	} else {
+	} else {		
 		PUSH_STACK ( argv_stack, NULL );
-			if ( argc > 0 )
-				rc = execv ( argv_stack[0], argv_stack );
+		if ( argc > 0 )
+			rc = execv ( argv_stack[0], argv_stack );
 	}
 	prog_ctr++;
 	//free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );
