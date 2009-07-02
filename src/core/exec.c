@@ -41,8 +41,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 int optind;
 int nextchar;
 
-EXTERN_INIT_STACK ( if_stack, int );
-EXTERN_INIT_STACK ( command_list, char * );
+EXTERN_INIT_STACK ( if_stack, int, 10 );
+EXTERN_INIT_STACK ( command_list, char *, 2000 );
 extern int prog_ctr;
 
 /**
@@ -94,12 +94,13 @@ int execv ( const char *command, char * const argv[] ) {
 	return -ENOEXEC;
 }
 
-static int expand_command ( const char *command, char ***argv_stack, int *argv_count ) {
+static int expand_command ( const char *command, char **argv_stack, int *argv_count ) {
 	char *head, *end;
 	int success;
 	int argc;
+	int i;
 	
-	INIT_STACK ( temp_stack, char * );
+	INIT_STACK ( temp_stack, char *, 10 );
 	
 	struct string expcmd = { .value = NULL };
 	
@@ -132,7 +133,7 @@ static int expand_command ( const char *command, char ***argv_stack, int *argv_c
 				argc++;
 				expcmd.value = NULL;
 				PUSH_STACK ( temp_stack, argv );
-				if ( !temp_stack || !stringcpy ( &expcmd, end ) ) {
+				if ( !stringcpy ( &expcmd, end ) ) {
 					DBG ( "out of memory while pushing: %s\n", argv );
 					argc = -ENOMEM;
 					break;
@@ -151,7 +152,8 @@ static int expand_command ( const char *command, char ***argv_stack, int *argv_c
 		}
 		head = expcmd.value;
 	}
-	*argv_stack = temp_stack;
+	for ( i = 0; i < 10; i++ )
+		argv_stack[i] = temp_stack[i];
 	*argv_count = COUNT ( temp_stack );
 	free_string ( &expcmd );
 	return argc;
@@ -168,23 +170,20 @@ static int expand_command ( const char *command, char ***argv_stack, int *argv_c
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	INIT_STACK ( argv_stack, char * );
+	INIT_STACK ( argv_stack, char *, 10 );
 	DBG ( "command = [%s]\n", command );
 	if ( prog_ctr > COUNT ( command_list ) ) {
 		prog_ctr = COUNT ( command_list ) + 1;
 		PUSH_STACK_STRING ( command_list, command );
 	}
 
-	argc = expand_command ( command, &argv_stack, &COUNT ( argv_stack ) );
+	argc = expand_command ( command, argv_stack, &COUNT ( argv_stack ) );
 	if ( argc < 0 ) {
 		rc = argc;
 	} else {
 		PUSH_STACK ( argv_stack, NULL );
-		if ( argv_stack ) {
 			if ( argc > 0 )
 				rc = execv ( argv_stack[0], argv_stack );
-		} else
-			rc = -ENOMEM;
 	}
 	prog_ctr++;
 	//free_generic_stack ( &argv_stack, 1, sizeof ( char * ) );

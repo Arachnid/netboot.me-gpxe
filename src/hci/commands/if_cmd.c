@@ -20,10 +20,10 @@ struct while_info {
 
 static struct while_info for_info;
 
-INIT_STACK ( if_stack, int );
-STATIC_INIT_STACK ( else_stack, int );
-STATIC_INIT_STACK ( loop_stack, struct while_info );
-INIT_STACK ( command_list, char * );
+INIT_STACK ( if_stack, int, 10 );
+STATIC_INIT_STACK ( else_stack, int, 10 );
+STATIC_INIT_STACK ( loop_stack, struct while_info, 10 );
+INIT_STACK ( command_list, char *, 2000 );
 
 static int push_if ( int cond ) {
 	int rc;

@@ -33,60 +33,37 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size
 
 #define COUNT( stack ) _##stack##_tos
 
-#define INIT_STACK( stack, type ) \
-	typeof ( type ) *stack = NULL;	\
+#define INIT_STACK( stack, type, size ) \
+	typeof ( type ) stack[size]; \
 	int COUNT ( stack ) = -1;
 	
-#define EXTERN_INIT_STACK( stack, type ) \
-	extern typeof ( type ) *stack; \
+#define EXTERN_INIT_STACK( stack, type, size ) \
+	extern typeof ( type ) stack[size]; \
 	extern int COUNT ( stack ); 
 	
-#define STATIC_INIT_STACK( stack, type ) \
-	static typeof ( type ) *stack = NULL;	\
+#define STATIC_INIT_STACK( stack, type, size ) \
+	static typeof ( type ) stack[size];	\
 	static int COUNT ( stack ) = -1;
 
 #define PUSH_STACK( stack, value ) do {				\
-	typeof ( stack ) _tmp_stack;						\
-	_tmp_stack = realloc ( stack, ( COUNT ( stack ) + 2 ) * sizeof ( typeof ( *stack ) ) );	\
-	if ( _tmp_stack ) {								\
-		stack = _tmp_stack;							\
 		COUNT ( stack ) += 1;						\
 		stack[COUNT ( stack )] = value;				\
-	} else {										\
-		FREE_STACK ( stack );						\
-		DBG ( "couldn't push onto stack\n" );			\
-	}											\
 } while ( 0 );
 
 #define PUSH_STACK_STRING( stack, value ) do {				\
-	typeof ( stack ) tmp_stack;						\
-	tmp_stack = realloc ( stack, ( COUNT ( stack ) + 2 ) * sizeof ( typeof ( *stack ) ) );	\
-	if ( tmp_stack ) {								\
-		stack = tmp_stack;							\
 		COUNT ( stack ) += 1;						\
 		stack[COUNT ( stack )] = strdup ( value );		\
-	} else										\
-		FREE_STACK ( stack );						\
 } while ( 0 );
 
 #define POP_STACK( stack, value ) do {				\
 	value = stack[COUNT ( stack )];					\
 	COUNT ( stack ) -= 1;							\
-	if ( COUNT ( stack ) < 0 )						\
-		FREE_STACK ( stack );						\
-} while ( 0 );
-
-#define FREE_STACK( stack ) do {						\
-	free ( stack );									\
-	stack = NULL;									\
-	COUNT ( stack ) = -1;							\
 } while ( 0 );
 
 #define FREE_STACK_STRING( stack ) do {				\
 	int i;											\
 	for ( i = 0; i <= COUNT ( stack ); i++ )				\
 		free ( stack[i] );							\
-	FREE_STACK ( stack );							\
 } while ( 0 );
 
 
