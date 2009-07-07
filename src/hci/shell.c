@@ -35,7 +35,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 
 /** The shell prompt string */
 static const char shell_prompt[] = "gPXE> ";
-extern size_t start_len;
+extern size_t cur_len;
+extern int incomplete;
 extern int command_source;
 /** Flag set in order to exit shell */
 static int exit_flag = 0;
@@ -104,17 +105,17 @@ void shell ( void ) {
 			line = strndup ( input.value + offset, len );
 		} else {
 			offset = input.value ? strlen ( input.value ) : 0;
-			line = readline ( shell_prompt );
+			line = readline ( shell_prompt + ( incomplete ? 4 : 0 ) );
 			string3cat ( &input, line, "\n"	);
 		}
 		if ( line ) {
-			start_len = offset;
+			cur_len = offset;
 			DBG ( "executing %d:[%s]\n", offset, line );
 			system ( line );
-			if ( start_len == offset || command_source != 0 )
+			if ( cur_len == offset || command_source != 0 )
 				offset += strlen ( line ) + 1;
 			else
-				offset = start_len;
+				offset = cur_len;
 			free ( line );
 			DBG ( "stored: %s", input.value );
 			DBG ( "new offset = %d\n", offset );

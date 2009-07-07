@@ -44,7 +44,9 @@ int nextchar;
 EXTERN_INIT_STACK ( if_stack, int, 10 );
 extern int COUNT ( loop_stack );
 size_t start_len;
+size_t cur_len;
 int command_source;
+int incomplete;
 
 /**
  * Execute command
@@ -171,16 +173,35 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
+	static char *complete_command;
 	INIT_STACK ( argv_stack, char *, 20 );
-	DBG ( "command = [%s]\n", command );
 	
-	argc = expand_command ( command, argv_stack, &COUNT ( argv_stack ) );
-	if ( argc < 0 ) {
-		rc = argc;
-	} else {		
-		PUSH_STACK ( argv_stack, NULL );
-		if ( argc > 0 )
-			rc = execv ( argv_stack[0], argv_stack );
+	if ( !incomplete ) {
+		start_len = cur_len;
+		complete_command = strdup ( command );
+	} else {
+		char *tmp = complete_command;
+		asprintf ( &complete_command, "%s\n%s", complete_command, command );
+		free ( tmp );
+	}
+	incomplete = 0;
+	if ( !complete_command ) {
+		return -ENOMEM;
+	}
+	
+	DBG ( "command = [%s]\n", complete_command );
+	
+	argc = expand_command ( complete_command, argv_stack, &COUNT ( argv_stack ) );
+	if ( !incomplete ) {
+		if ( argc < 0 ) {
+			rc = argc;
+		} else {		
+			PUSH_STACK ( argv_stack, NULL );
+			if ( argc > 0 )
+				rc = execv ( argv_stack[0], argv_stack );
+		}
+		free ( complete_command );
+		complete_command = NULL;
 	}
 	FREE_STACK_STRING ( argv_stack );
 	return rc;

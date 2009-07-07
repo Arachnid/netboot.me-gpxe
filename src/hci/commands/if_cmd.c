@@ -23,6 +23,7 @@ INIT_STACK ( if_stack, int, 10 );
 STATIC_INIT_STACK ( else_stack, int, 10 );
 INIT_STACK ( loop_stack, struct while_info, 10 );
 extern size_t start_len;
+extern size_t cur_len;
 
 static int push_if ( int cond ) {
 	int rc;
@@ -164,7 +165,7 @@ static int done_exec ( int argc, char **argv ) {
 		return 1;
 	
 	if ( cond || for_info.is_continue ) {
-		start_len = for_info.loop_start;
+		cur_len = start_len = for_info.loop_start;
 	} else
 		for_info.cur_arg = 0;
 	DBG ( "exited loop. stack size = %d\n", COUNT ( loop_stack ) + 1 );

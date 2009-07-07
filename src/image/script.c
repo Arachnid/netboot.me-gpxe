@@ -33,7 +33,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/parse.h>
 
 struct image_type script_image_type __image_type ( PROBE_NORMAL );
-extern size_t start_len;
+extern size_t cur_len;
 extern int command_source;
 void init_if ();
 /**
@@ -71,7 +71,7 @@ static int script_exec ( struct image *image ) {
 
 			copy_from_user ( cmdbuf, image->data, offset, len );
 			cmdbuf[len] = '\0';
-			start_len = offset;
+			cur_len = offset;
 			DBG ( "$ %s\n", cmdbuf );
 			if ( ( rc = system ( cmdbuf ) ) != 0 ) {
 				DBG ( "Command \"%s\" failed: %s\n",
@@ -81,10 +81,10 @@ static int script_exec ( struct image *image ) {
 		}
 		
 		/* Move to next line */
-		if ( offset == start_len )		
+		if ( offset == cur_len )		
 			offset += ( len + 1 );
 		else /* A done statement changed the offset */
-			offset = start_len;
+			offset = cur_len;
 	}
 
 	rc = 0;

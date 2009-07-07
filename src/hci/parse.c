@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <gpxe/settings.h>
 
+extern int incomplete;
+
 const struct char_table arith_table[21] = {
 	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
 	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
@@ -143,8 +145,9 @@ char * parse_escape ( struct string *s, char *input ) {
 	char *end;
 	
 	if ( ! input[1] ) {
-		printf ( "stray \\\n" );
-		return input + 1;
+		incomplete = 1;
+		free_string ( s );
+		return NULL;
 	}
 	*input = 0;
 	end = input + 2;
@@ -213,9 +216,10 @@ char * expand_string ( struct string *s, char *head, const struct char_table *ta
 				case FUNC: /* Call another function */
 					{
 						char *tmp;
-						*success = 1;
 						if ( ! ( tmp = tline->next.parse_func ( s, s->value + cur_pos ) ) )
 							return NULL;
+						if ( tmp - s->value != cur_pos )
+							*success = 1;
 						cur_pos = tmp - s->value;
 					}
 					break;
@@ -228,7 +232,7 @@ char * expand_string ( struct string *s, char *head, const struct char_table *ta
 		
 	}
 	if ( in_quotes ) {
-		printf ( "can't find closing '%c'\n", table[0].token );
+		incomplete = 1;
 		free_string ( s );
 		return NULL;
 	}
