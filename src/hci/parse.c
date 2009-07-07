@@ -54,7 +54,13 @@ const struct char_table dollar_table[2] = {
 
 char * string3cat ( struct string *s1, const char *s2, const char *s3 ) { /* The len is the size of s1 */
 	char *tmp = s1->value;
-	asprintf ( &s1->value, "%s%s%s", s1->value, s2, s3 );
+	if ( s1->value )
+		asprintf ( &s1->value, "%s%s%s", s1->value, s2, s3 );
+	else {
+		stringcpy ( s1, s2 );
+		if ( s1->value )
+			stringcat ( s1, s3 );
+	}
 	free ( tmp );
 	return s1->value;
 }

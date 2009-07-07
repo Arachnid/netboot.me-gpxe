@@ -30,10 +30,12 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <ctype.h>
 #include <errno.h>
 #include <gpxe/image.h>
-#include <gpxe/gen_stack.h>
+#include <gpxe/parse.h>
 
 struct image_type script_image_type __image_type ( PROBE_NORMAL );
-
+extern size_t start_len;
+extern int command_source;
+void init_if ();
 /**
  * Execute script
  *
@@ -50,8 +52,10 @@ static int script_exec ( struct image *image ) {
 	 * doesn't throw us into an execution loop.
 	 */
 	unregister_image ( image );
-	free_command_list();
-
+	/* Only one script can be executed at a time, so prevent stale loops from interfering */
+	if ( command_source == 1 )
+		init_if ();
+	command_source = 1;
 	while ( offset < image->len ) {
 	
 		/* Find length of next line, excluding any terminating '\n' */
@@ -67,6 +71,7 @@ static int script_exec ( struct image *image ) {
 
 			copy_from_user ( cmdbuf, image->data, offset, len );
 			cmdbuf[len] = '\0';
+			start_len = offset;
 			DBG ( "$ %s\n", cmdbuf );
 			if ( ( rc = system ( cmdbuf ) ) != 0 ) {
 				DBG ( "Command \"%s\" failed: %s\n",
@@ -76,7 +81,10 @@ static int script_exec ( struct image *image ) {
 		}
 		
 		/* Move to next line */
-		offset += ( len + 1 );
+		if ( offset == start_len )		
+			offset += ( len + 1 );
+		else /* A done statement changed the offset */
+			offset = start_len;
 	}
 
 	rc = 0;

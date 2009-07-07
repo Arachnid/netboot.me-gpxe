@@ -11,25 +11,18 @@ int isnum ( char *string, long *num );
 int system ( const char * );
 
 struct while_info {
-	struct command_entry *loop_start;
+	int loop_start;
 	int if_pos;
 	int is_continue;
 	int cur_arg;
 };
 
 static struct while_info for_info;
-struct command_entry start_command = {
-	.line[0] = 0,
-	.neighbours = {
-		.prev = &( start_command.neighbours ),
-		.next = &( start_command.neighbours ),
-	},
-};
 
 INIT_STACK ( if_stack, int, 10 );
 STATIC_INIT_STACK ( else_stack, int, 10 );
 INIT_STACK ( loop_stack, struct while_info, 10 );
-struct command_entry *cur_command = &start_command;
+extern size_t start_len;
 
 static int push_if ( int cond ) {
 	int rc;
@@ -115,8 +108,12 @@ struct command else_command __command = {
 };
 
 void init_if ( void ) {
+	COUNT ( if_stack ) = -1;
+	COUNT ( else_stack ) = -1;
+	COUNT ( loop_stack ) = -1;
 	PUSH_STACK ( if_stack, 1 );
 	PUSH_STACK ( else_stack, 1 );
+	for_info.cur_arg = 0;
 	return;
 }
 
@@ -134,8 +131,8 @@ static int while_exec ( int argc, char **argv ) {
 		return 1;
 	else_stack[COUNT ( else_stack )] = 1;
 	
-	w.loop_start = cur_command;
-	DBG ( "pushing [%s]\n", cur_command->line );
+	w.loop_start = start_len;
+	//DBG ( "pushing [%s]\n", cur_command->line );
 	w.if_pos = COUNT ( if_stack );
 	w.is_continue = 0;
 	w.cur_arg = 0;
@@ -150,7 +147,7 @@ struct command while_command __command = {
 
 static int done_exec ( int argc, char **argv ) {
 	int cond;
-	struct command_entry *tmp_cmd;
+	//struct command_entry *tmp_cmd;
 	//int tmp_pc;
 	int rc = 0;
 	if ( argc != 1 ) {
@@ -166,30 +163,12 @@ static int done_exec ( int argc, char **argv ) {
 	if ( pop_if ( &cond ) )
 		return 1;
 	
-	while ( cond || for_info.is_continue ) {
-		tmp_cmd = cur_command;
-		cur_command = for_info.loop_start;
-		
-		do {
-			if ( ( rc = system ( cur_command->line ) ) ) {
-				DBG ( "bailing out at [%s]\n", cur_command->line );
-				break;
-			}
-			if ( cur_command == &start_command ) {
-				DBG ( "reached starting while looking for done\n" );
-				rc = 1;
-				break;
-			}
-		} while ( cur_command != tmp_cmd );
-		cur_command = tmp_cmd;
-		if ( rc != 0 )
-			return rc;
-		POP_STACK ( loop_stack, for_info );
-		if ( pop_if ( &cond ) )
-			return 1;
-	}
+	if ( cond || for_info.is_continue ) {
+		start_len = for_info.loop_start;
+	} else
+		for_info.cur_arg = 0;
 	DBG ( "exited loop. stack size = %d\n", COUNT ( loop_stack ) + 1 );
-	for_info.cur_arg = 0;
+	
 	return rc;
 }
 
@@ -241,8 +220,8 @@ static int for_exec ( int argc, char **argv ) {
 		return 1;
 	}
 	
-	for_info.loop_start = cur_command;
-	DBG ( "pushing [%s]\n", cur_command->line );
+	for_info.loop_start = start_len;
+	//DBG ( "pushing [%s]\n", cur_command->line );
 	for_info.cur_arg = for_info.cur_arg == 0 ? 3 : for_info.cur_arg + 1;			//for_info should either be popped by a done or for_info.cur_arg = 0
 	for_info.is_continue = 0;
 	
@@ -277,16 +256,3 @@ struct command do_command __command = {
 	.name = "do",
 	.exec = do_exec,
 };
-
-void free_command_list () {
-	struct command_entry *cur = &start_command;
-	cur = list_entry ( cur->neighbours.next, struct command_entry, neighbours );
-	while ( cur != &start_command ) {
-		struct command_entry *temp;
-		temp = list_entry ( cur->neighbours.next, struct command_entry, neighbours );
-		free ( cur );
-		cur = temp;
-	}
-	INIT_LIST_HEAD ( &start_command.neighbours );
-	cur_command = &start_command;
-}

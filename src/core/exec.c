@@ -43,7 +43,8 @@ int nextchar;
 
 EXTERN_INIT_STACK ( if_stack, int, 10 );
 extern int COUNT ( loop_stack );
-extern struct command_entry *cur_command;
+size_t start_len;
+int command_source;
 
 /**
  * Execute command
@@ -170,20 +171,9 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	struct command_entry *c;
 	INIT_STACK ( argv_stack, char *, 20 );
 	DBG ( "command = [%s]\n", command );
-	if ( cur_command == &start_command ) {
-		if ( ( c = malloc ( sizeof ( struct command_entry ) + strlen ( command ) ) ) ) {
-			strcpy ( c->line, command );
-			list_add_tail ( &c->neighbours, &start_command.neighbours );
-			DBG ( "stored: [%s]\n", c->line );
-			cur_command = c;
-		} else {
-			DBG ( "failed to store [%s]\n", command );
-			return -ENOMEM;
-		}
-	}
+	
 	argc = expand_command ( command, argv_stack, &COUNT ( argv_stack ) );
 	if ( argc < 0 ) {
 		rc = argc;
@@ -192,7 +182,6 @@ int system ( const char *command ) {
 		if ( argc > 0 )
 			rc = execv ( argv_stack[0], argv_stack );
 	}
-	cur_command = list_entry ( cur_command->neighbours.next, struct command_entry, neighbours );
 	FREE_STACK_STRING ( argv_stack );
 	return rc;
 }

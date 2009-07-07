@@ -74,7 +74,7 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size
 
 struct command_entry {
 	struct list_head neighbours;
-	char line[1];
+	int offset;
 };
 extern struct command_entry start_command;
 
