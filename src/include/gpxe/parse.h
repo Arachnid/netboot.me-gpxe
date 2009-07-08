@@ -38,7 +38,7 @@ char * stringcat ( struct string *s1, const char *s2 );
 
 extern const struct char_table dquote_table[3];
 extern const struct char_table squote_table[1];
-extern const struct char_table arith_table[21];
+extern const struct char_table arith_table[22];
 extern const struct char_table table[6];
 
 #endif

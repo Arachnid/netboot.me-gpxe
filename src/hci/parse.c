@@ -7,13 +7,14 @@
 
 extern int incomplete;
 
-const struct char_table arith_table[21] = {
+const struct char_table arith_table[22] = {
 	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
 	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
 	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
 	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
 	{ .token = ' ', .type = ENDQUOTES },
 	{ .token = '\t', .type = ENDQUOTES },
+	{ .token = '\n', .type = ENDQUOTES },
 	{ .token = '~', .type = ENDTOK },
 	{ .token = '!', .type = ENDTOK },
 	{ .token = '*', .type = ENDTOK },

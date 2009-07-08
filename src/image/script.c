@@ -36,6 +36,7 @@ struct image_type script_image_type __image_type ( PROBE_NORMAL );
 extern size_t cur_len;
 extern int command_source;
 void init_if ();
+size_t get_free_heap ( void );
 /**
  * Execute script
  *
@@ -56,6 +57,7 @@ static int script_exec ( struct image *image ) {
 	if ( command_source == 1 )
 		init_if ();
 	command_source = 1;
+	DBG ( "BEFORE: %i\n", get_free_heap () );
 	while ( offset < image->len ) {
 	
 		/* Find length of next line, excluding any terminating '\n' */
@@ -89,6 +91,7 @@ static int script_exec ( struct image *image ) {
 
 	rc = 0;
  done:
+	DBG ( "AFTER: %i\n", get_free_heap () );
 	/* Re-register image and return */
 	register_image ( image );
 	return rc;

@@ -37,6 +37,7 @@
 #define EDIV0			(EINVAL | EUNIQ_02)
 #define ENOOP		(EINVAL | EUNIQ_03)
 #define EWRONGOP	(EINVAL | EUNIQ_04)
+#define EINCOMPL		(EINVAL | EUNIQ_05)
 
 static struct string *input_str;
 static char *inp_ptr = NULL;
@@ -46,7 +47,7 @@ static union {
 	long num_value;
 	char *str_value;
 }tok_value;
-
+extern int incomplete;
 /* Here is a table of the operators */
 static const char op_table[NUM_OPS * 3 + 1] = {	'!', SEP2 ,  '~', SEP2, '*', SEP2, '/', SEP2, '%', SEP2, '+', SEP2, '-', SEP2,
 						'<', SEP2, '<', '=', SEP1, '<', '<', SEP1, '>', SEP2, '>', '=', SEP1, '>', '>', SEP1,  '&', SEP2,
@@ -72,16 +73,18 @@ static void input ( void ) {
 	ignore_whitespace();
 	
 	if ( *inp_ptr == '\0' ) {
+		incomplete = 1;
 		tok = -1;
+		err_val = -EINCOMPL;
 		return;
 	}
 	tok = 0;
 	
 	start = inp_ptr - input_str->value;
-	end = expand_string ( input_str, inp_ptr, arith_table, 21, 0, &success );
+	end = expand_string ( input_str, inp_ptr, arith_table, 22, 1, &success );
 	if ( !end ) {
 		tok = -1;
-		err_val = -ENOMEM;
+		err_val = incomplete ? -EINCOMPL : -ENOMEM; //mark
 		return;
 	}
 	
@@ -90,9 +93,11 @@ static void input ( void ) {
 		if ( isnum ( strtmp, &tok_value.num_value ) ) {
 			free ( strtmp );
 			tok = TOK_NUMBER;
+			DBG ( "found number: %ld\n", tok_value.num_value );
 		} else {
 			tok_value.str_value = strtmp;
 			tok = TOK_STRING;
+			DBG ( "found string: [%s]\n", tok_value.str_value );
 		}
 		inp_ptr = end;
 		return;
@@ -182,15 +187,18 @@ static int parse_num ( char **buffer ) {
 			skip ( ')' );
 			if ( err_val )	{
 				free ( *buffer );
+				*buffer = NULL;
 				return (err_val );
 			}
 			if ( flag ) {
 				int t;
 				t = isnum ( *buffer, &num );
 				free ( *buffer );
-				if ( t == 0 ) {		/* Trying to do a -string, which should not be permitted */
-					return ( err_val = -EWRONGOP );
-				}
+				*buffer = NULL;
+				if ( t == 0 )	/* Trying to do a -string, which should not be permitted */
+					err_val = -EWRONGOP;
+				if ( err_val )
+					return err_val;
 				return ( ( asprintf ( buffer, "%ld", -num )  < 0 ) ? (err_val = -ENOMEM ) : 0 );
 			}
 			return 0;
@@ -202,6 +210,8 @@ static int parse_num ( char **buffer ) {
 			else
 				num = tok_value.num_value;
 			input();
+			if ( err_val )
+				return err_val;
 			return ( ( asprintf ( buffer, "%ld", num ) < 0) ? (err_val = -ENOMEM ) : 0 );
 		}
 		return ( err_val = -EPARSE );
@@ -209,7 +219,11 @@ static int parse_num ( char **buffer ) {
 	if ( tok == TOK_STRING ) {
 		*buffer = tok_value.str_value;
 		input();
-		return 0;
+		if ( err_val ) {
+			free ( *buffer );
+			*buffer = NULL;
+		}
+		return err_val;
 	}
 	return ( err_val = -EPARSE );
 }
@@ -218,7 +232,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 	long value;
 	int bothints = 1;
 	long lhs, rhs;
-	
+	*buffer = NULL;
 	if ( op1 ) {
 		if ( ! isnum ( op1, &lhs ) ) 
 			bothints = 0;
@@ -306,25 +320,30 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 static int parse_prio(int prio, char **buffer) {
 	int op;
 	char *lc, *rc;
-		
+	
+	lc = NULL;
+	if ( tok < 0 ) {
+		return err_val;
+	}
 	if ( tok < MIN_TOK || tok == TOK_MINUS || tok == TOK_PLUS ) {
 		parse_num ( &lc );
 	} else {
 		if ( tok < MIN_TOK + 2 ) {
 			lc = NULL;
 		} else {
-			return ( err_val = -EPARSE );
+			err_val = -EPARSE;
 		}
 	}
 	
 	if ( err_val ) {
+		free ( lc );
 		return err_val;
 	}
 	while( tok != -1 && tok != ')' ) {
 		long lhs;
 		if ( tok < MIN_TOK ) {
-			if ( lc )
-				free(lc);
+			free(lc);
+			*buffer = NULL;
 			return ( err_val = -EPARSE );
 		}
 		if ( op_prio[tok - MIN_TOK] <= prio - ( tok - MIN_TOK <= 1 ) ? 1 : 0 ) {
@@ -336,18 +355,16 @@ static int parse_prio(int prio, char **buffer) {
 		parse_prio ( op_prio[op - MIN_TOK], &rc );
 		
 		if ( err_val )	{
-			if ( lc )
-				free ( lc );
+			free ( lc );
+			*buffer = NULL;
 			return err_val;
 		}
 		
 		lhs = eval ( op - MIN_TOK, lc, rc, buffer );
 		free ( rc );
-		if ( lc )
-			free ( lc );
-		if ( err_val ) {
+		free ( lc );
+		if ( err_val )
 			return err_val;
-		}
 		lc = *buffer;
  	}  
 	*buffer = lc;
@@ -370,11 +387,9 @@ char * parse_arith ( struct string *inp, char *orig ) {
 	inp_ptr = orig + 1;
 	
 	input();
-	
 	skip ( '(' );
 	parse_expr ( &buffer );
 	if ( !err_val ) {
-		
 		if ( tok != ')' ) {
 			err_val = -EPARSE;
 		} else {
@@ -384,9 +399,8 @@ char * parse_arith ( struct string *inp, char *orig ) {
 			orig = string3cat ( inp, buffer, end );
 			end = orig + start + strlen ( buffer );
 		}
-		free ( buffer );
 	}
-		
+	free ( buffer );
 	if ( err_val )	{
 		
 		if ( tok == TOK_STRING )
@@ -407,6 +421,8 @@ char * parse_arith ( struct string *inp, char *orig ) {
 			case -ENOMEM:
 				printf("out of memory\n");
 				break;
+			case -EINCOMPL:
+				break;
 		}
 		free_string ( inp );
 		return end;
@@ -414,4 +430,3 @@ char * parse_arith ( struct string *inp, char *orig ) {
 	
 	return end;
 }
-
