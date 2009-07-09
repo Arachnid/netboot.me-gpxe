@@ -30,6 +30,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/command.h>
 #include <gpxe/parse.h>
 #include <gpxe/gen_stack.h>
+#include <gpxe/settings.h>
 
 /** @file
  *
@@ -197,8 +198,14 @@ int system ( const char *command ) {
 			rc = argc;
 		} else {		
 			PUSH_STACK ( argv_stack, NULL );
-			if ( argc > 0 )
+			if ( argc > 0 ) {
+				char *rc_string;
 				rc = execv ( argv_stack[0], argv_stack );
+				asprintf ( &rc_string, "%d", rc );
+				if ( rc_string )
+					storef_named_setting ( "rc", rc_string );
+				free ( rc_string );
+			}
 		}
 		free ( complete_command );
 		complete_command = NULL;

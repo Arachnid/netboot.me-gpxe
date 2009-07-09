@@ -37,6 +37,7 @@ extern size_t cur_len;
 extern int command_source;
 void init_if ();
 size_t get_free_heap ( void );
+int allow_bad;
 /**
  * Execute script
  *
@@ -75,7 +76,7 @@ static int script_exec ( struct image *image ) {
 			cmdbuf[len] = '\0';
 			cur_len = offset;
 			DBG ( "$ %s\n", cmdbuf );
-			if ( ( rc = system ( cmdbuf ) ) != 0 ) {
+			if ( ( rc = system ( cmdbuf ) ) && ! allow_bad ) {
 				DBG ( "Command \"%s\" failed: %s\n",
 				      cmdbuf, strerror ( rc ) );
 				goto done;
@@ -106,6 +107,9 @@ static int script_exec ( struct image *image ) {
 static int script_load ( struct image *image ) {
 	static const char magic[] = "#!gpxe";
 	char test[ sizeof ( magic ) - 1 /* NUL */ + 1 /* terminating space */];
+	static const char noexit_option[] = "--no-exit";
+	char option_test[ sizeof ( noexit_option ) ];
+	const char *ptr;
 
 	/* Sanity check */
 	if ( image->len < sizeof ( test ) ) {
@@ -120,7 +124,18 @@ static int script_load ( struct image *image ) {
 		DBG ( "Invalid magic signature\n" );
 		return -ENOEXEC;
 	}
-
+	allow_bad = 0;
+	/* Check for a --no-exit option */
+	ptr = ( const char * ) image->data + strlen ( magic );
+	while ( *ptr == ' ' || *ptr == '\t' )
+		ptr++;
+	strncpy ( option_test, ptr, strlen ( noexit_option ) );
+	option_test[strlen ( noexit_option ) ] = 0;
+	if ( !strcmp ( noexit_option, option_test ) && isspace ( ptr[strlen ( noexit_option )] ) ) {
+		allow_bad = 1;
+		DBG ( "--no-exit option\n" );
+	}
+	
 	/* This is a script */
 	image->type = &script_image_type;
 
