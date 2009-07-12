@@ -49,18 +49,18 @@ static int script_exec ( struct image *image ) {
 	off_t eol;
 	size_t len;
 	int rc;
+	int this_allow = 0;
 
 	/* Temporarily de-register image, so that a "boot" command
 	 * doesn't throw us into an execution loop.
 	 */
 	unregister_image ( image );
 	/* Only one script can be executed at a time, so prevent stale loops from interfering */
-	if ( command_source == 1 )
-		init_if ();
+	//if ( command_source == 1 )
+	//	init_if ();
 	command_source = 1;
 	DBG ( "BEFORE: %i\n", get_free_heap () );
 	while ( offset < image->len ) {
-	
 		/* Find length of next line, excluding any terminating '\n' */
 		eol = memchr_user ( image->data, offset, '\n',
 				    ( image->len - offset ) );
@@ -71,18 +71,22 @@ static int script_exec ( struct image *image ) {
 		/* Copy line, terminate with NUL, and execute command */
 		{
 			char cmdbuf[ len + 1 ];
+			
 
 			copy_from_user ( cmdbuf, image->data, offset, len );
 			cmdbuf[len] = '\0';
 			cur_len = offset;
 			DBG ( "$ %s\n", cmdbuf );
-			if ( ( rc = system ( cmdbuf ) ) && ! allow_bad ) {
+			if ( ( rc = system ( cmdbuf ) ) && ! this_allow ) {
 				DBG ( "Command \"%s\" failed: %s\n",
 				      cmdbuf, strerror ( rc ) );
 				goto done;
 			}
 		}
-		
+		if ( offset == 0 )
+			this_allow = allow_bad;
+		else
+			allow_bad = this_allow;
 		/* Move to next line */
 		if ( offset == cur_len )		
 			offset += ( len + 1 );

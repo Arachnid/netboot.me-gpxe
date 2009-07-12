@@ -1,0 +1,11 @@
+#!gpxe --no-exit
+set i -1
+while $( "${net$(${i} + 1)/mac}" != "" )
+do
+	set i $(${i} + 1)
+	dhcp net${i}
+	if $( ${rc} == 0 )
+		chain ${filename}
+	fi
+	echo ${i}
+done

@@ -43,11 +43,12 @@ int optind;
 int nextchar;
 
 EXTERN_INIT_STACK ( if_stack, int, 10 );
-extern int COUNT ( loop_stack );
+EXTERN_INIT_STACK ( loop_stack, struct while_info, 10 );
 size_t start_len;
 size_t cur_len;
 int command_source;
 int incomplete;
+extern int in_try;
 
 /**
  * Execute command
@@ -87,7 +88,8 @@ int execv ( const char *command, char * const argv[] ) {
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
 			if ( if_stack[COUNT ( if_stack )] == 1 || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
-				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "for" ) || !strcmp ( cmd->name, "done" ) )
+				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "for" ) || !strcmp ( cmd->name, "done" ) || !strcmp ( cmd->name, "try" )
+				|| !strcmp ( cmd->name, "catch" ) )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;
@@ -174,6 +176,7 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
+	int i;
 	static char *complete_command;
 	INIT_STACK ( argv_stack, char *, 20 );
 	
@@ -194,6 +197,8 @@ int system ( const char *command ) {
 	
 	argc = expand_command ( complete_command, argv_stack, &COUNT ( argv_stack ) );
 	if ( !incomplete ) {
+		free ( complete_command );
+		complete_command = NULL;
 		if ( argc < 0 ) {
 			rc = argc;
 		} else {		
@@ -201,14 +206,23 @@ int system ( const char *command ) {
 			if ( argc > 0 ) {
 				char *rc_string;
 				rc = execv ( argv_stack[0], argv_stack );
+				DBG ( "in_try = %d, rc = %d\n", in_try, rc );
+				if ( rc && in_try > 0 ) {
+					DBG ( "Exiting try block\n" );
+					for ( i = 0; i < COUNT ( loop_stack ); i++ )
+						if ( loop_stack[i].is_catch )
+							break;
+					i = loop_stack[i].if_pos;
+					DBG ( "i = %d. COUNT ( loop_stack ) = %d\n", i, COUNT ( if_stack ) );
+					for ( ; i <= COUNT ( if_stack ); i++ )
+						if_stack[i] = 0;
+				}
 				asprintf ( &rc_string, "%d", rc );
 				if ( rc_string )
 					storef_named_setting ( "rc", rc_string );
 				free ( rc_string );
 			}
 		}
-		free ( complete_command );
-		complete_command = NULL;
 	}
 	FREE_STACK_STRING ( argv_stack );
 	return rc;

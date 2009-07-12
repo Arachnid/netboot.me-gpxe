@@ -72,11 +72,13 @@ void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size
 	FREE_STACK ( stack );							\
 } while ( 0 );
 
-struct command_entry {
-	struct list_head neighbours;
-	int offset;
+struct while_info {
+	int loop_start;
+	int if_pos;
+	int is_continue;
+	int is_catch;
+	int cur_arg;
 };
-extern struct command_entry start_command;
 
 void free_command_list();
 

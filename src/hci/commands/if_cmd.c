@@ -10,13 +10,6 @@ int isnum ( char *string, long *num );
 
 int system ( const char * );
 
-struct while_info {
-	int loop_start;
-	int if_pos;
-	int is_continue;
-	int cur_arg;
-};
-
 static struct while_info for_info;
 
 INIT_STACK ( if_stack, int, 10 );
@@ -24,6 +17,7 @@ STATIC_INIT_STACK ( else_stack, int, 10 );
 INIT_STACK ( loop_stack, struct while_info, 10 );
 extern size_t start_len;
 extern size_t cur_len;
+int in_try;
 
 static int push_if ( int cond ) {
 	int rc;
@@ -137,6 +131,7 @@ static int while_exec ( int argc, char **argv ) {
 	w.if_pos = COUNT ( if_stack );
 	w.is_continue = 0;
 	w.cur_arg = 0;
+	w.is_catch = 0;
 	PUSH_STACK ( loop_stack, w );
 	return ( loop_stack == NULL );
 }
@@ -163,13 +158,16 @@ static int done_exec ( int argc, char **argv ) {
 	POP_STACK ( loop_stack, for_info );
 	if ( pop_if ( &cond ) )
 		return 1;
-	
+	if ( for_info.is_catch ) {
+		cond = 0;
+		in_try--;
+	}
 	if ( cond || for_info.is_continue ) {
 		cur_len = start_len = for_info.loop_start;
 	} else
 		for_info.cur_arg = 0;
 	DBG ( "exited loop. stack size = %d\n", COUNT ( loop_stack ) + 1 );
-	
+
 	return rc;
 }
 
@@ -256,4 +254,35 @@ static int do_exec ( int argc, char **argv ) {
 struct command do_command __command = {
 	.name = "do",
 	.exec = do_exec,
+};
+
+static int try_exec ( int argc, char **argv ) {
+	if ( argc != 1 ) {
+		printf ( "Usage: %s\n", argv[0] );
+		return 1;
+	}
+	asprintf ( &argv[1], "%d", 1 );
+	while_exec ( 2, argv );
+	loop_stack[ COUNT ( loop_stack )].is_catch = 1;
+	else_stack[ COUNT ( else_stack )] = 0;
+	DBG ( "COUNT ( loop_stack ) = %d\n", COUNT ( loop_stack ) );
+	in_try++;
+	return 0;
+}
+
+struct command try_command __command = {
+	.name = "try",
+	.exec = try_exec,
+};
+
+static int catch_exec ( int argc, char **argv ) {
+	if ( else_exec ( argc, argv ) )
+		return 1;
+	loop_stack[ COUNT ( loop_stack )].is_continue = 0;
+	return 0;
+}
+
+struct command catch_command __command = {
+	.name = "catch",
+	.exec = catch_exec,
 };
