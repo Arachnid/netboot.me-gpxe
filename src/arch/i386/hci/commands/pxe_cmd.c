@@ -25,9 +25,11 @@ struct command pxe_commands[] __command = {
 	{
 		.name = "startpxe",
 		.exec = startpxe_exec,
+		.flags = 0,
 	},
 	{
 		.name = "stoppxe",
 		.exec = stoppxe_exec,
+		.flags = 0,
 	},
 };

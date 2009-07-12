@@ -17,6 +17,7 @@ struct command {
 	 * @ret rc		Return status code
 	 */
 	int ( * exec ) ( int argc, char **argv );
+	int flags;
 };
 
 #define COMMANDS __table ( struct command, "commands" )

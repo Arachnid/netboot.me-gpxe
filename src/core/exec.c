@@ -87,9 +87,7 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( if_stack[COUNT ( if_stack )] == 1 || !strcmp ( cmd->name, "if" ) || !strcmp ( cmd->name, "fi" ) || !strcmp ( cmd->name, "else" )
-				|| !strcmp ( cmd->name, "while" ) || !strcmp ( cmd->name, "for" ) || !strcmp ( cmd->name, "done" ) || !strcmp ( cmd->name, "try" )
-				|| !strcmp ( cmd->name, "catch" ) )
+			if ( if_stack[COUNT ( if_stack )] == 1 || cmd->flags & 0x1 )
 				return cmd->exec ( argc, ( char ** ) argv );
 			else
 				return 0;
@@ -249,4 +247,5 @@ static int echo_exec ( int argc, char **argv ) {
 struct command echo_command __command = {
 	.name = "echo",
 	.exec = echo_exec,
+	.flags = 0,
 };

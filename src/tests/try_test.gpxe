@@ -12,6 +12,14 @@ catch
 	echo "Boot failure"
 done
 echo "End of try-catch"
+if 0
+	try
+		dhcp net0
+		echo Fail
+	catch
+		echo Fail2
+	done
+fi
 try
 	dhcp net0
 	kernel tftp://10.0.0.2//bz2bzImage root=100

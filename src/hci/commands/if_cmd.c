@@ -60,6 +60,7 @@ static int if_exec ( int argc, char **argv ) {
 struct command if_command __command = {
 	.name = "if",
 	.exec = if_exec,
+	.flags = 1,
 };
 
 static int fi_exec ( int argc, char **argv ) {
@@ -77,6 +78,7 @@ static int fi_exec ( int argc, char **argv ) {
 struct command fi_command __command = {
 	.name = "fi",
 	.exec = fi_exec,
+	.flags = 1,
 };
 
 static int else_exec ( int argc, char **argv ) {
@@ -100,6 +102,7 @@ static int else_exec ( int argc, char **argv ) {
 struct command else_command __command = {
 	.name = "else",
 	.exec = else_exec,
+	.flags = 1,
 };
 
 void init_if ( void ) {
@@ -139,6 +142,7 @@ static int while_exec ( int argc, char **argv ) {
 struct command while_command __command = {
 	.name = "while",
 	.exec = while_exec,
+	.flags = 1,
 };
 
 static int done_exec ( int argc, char **argv ) {
@@ -174,6 +178,7 @@ static int done_exec ( int argc, char **argv ) {
 struct command done_command __command = {
 	.name = "done",
 	.exec = done_exec,
+	.flags = 1,
 };
 
 static int break_exec ( int argc, char **argv ) {
@@ -195,6 +200,7 @@ static int break_exec ( int argc, char **argv ) {
 struct command break_command __command = {
 	.name = "break",
 	.exec = break_exec,
+	.flags = 0,
 };
 
 static int continue_exec ( int argc, char **argv ) {
@@ -240,6 +246,7 @@ static int for_exec ( int argc, char **argv ) {
 struct command for_command __command = {
 	.name = "for",
 	.exec = for_exec,
+	.flags = 1,
 };
 
 static int do_exec ( int argc, char **argv ) {
@@ -254,6 +261,7 @@ static int do_exec ( int argc, char **argv ) {
 struct command do_command __command = {
 	.name = "do",
 	.exec = do_exec,
+	.flags = 0,
 };
 
 static int try_exec ( int argc, char **argv ) {
@@ -273,6 +281,7 @@ static int try_exec ( int argc, char **argv ) {
 struct command try_command __command = {
 	.name = "try",
 	.exec = try_exec,
+	.flags = 1,
 };
 
 static int catch_exec ( int argc, char **argv ) {
@@ -285,4 +294,5 @@ static int catch_exec ( int argc, char **argv ) {
 struct command catch_command __command = {
 	.name = "catch",
 	.exec = catch_exec,
+	.flags = 1,
 };

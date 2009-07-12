@@ -24,4 +24,5 @@ static int autoboot_exec ( int argc, char **argv ) {
 struct command autoboot_command __command = {
 	.name = "autoboot",
 	.exec = autoboot_exec,
+	.flags = 0,
 };

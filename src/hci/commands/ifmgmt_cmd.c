@@ -168,13 +168,16 @@ struct command ifmgmt_commands[] __command = {
 	{
 		.name = "ifopen",
 		.exec = ifopen_exec,
+		.flags = 0,
 	},
 	{
 		.name = "ifclose",
 		.exec = ifclose_exec,
+		.flags = 0,
 	},
 	{
 		.name = "ifstat",
 		.exec = ifstat_exec,
+		.flags = 0,
 	},
 };

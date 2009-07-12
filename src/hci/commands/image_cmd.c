@@ -564,26 +564,32 @@ struct command image_commands[] __command = {
 	{
 		.name = "imgfetch",
 		.exec = imgfetch_exec,
+		.flags = 0,
 	},
 	{
 		.name = "module",
 		.exec = imgfetch_exec, /* synonym for "imgfetch" */
+		.flags = 0,
 	},
 	{
 		.name = "initrd",
 		.exec = imgfetch_exec, /* synonym for "imgfetch" */
+		.flags = 0,
 	},
 	{
 		.name = "kernel",
 		.exec = kernel_exec,
+		.flags = 0,
 	},
 	{
 		.name = "chain",
 		.exec = chain_exec,
+		.flags = 0,
 	},
 	{
 		.name = "imgload",
 		.exec = imgload_exec,
+		.flags = 0,
 	},
 	{
 		.name = "imgargs",
@@ -592,17 +598,21 @@ struct command image_commands[] __command = {
 	{
 		.name = "imgexec",
 		.exec = imgexec_exec,
+		.flags = 0,
 	},
 	{
 		.name = "boot", /* synonym for "imgexec" */
 		.exec = imgexec_exec,
+		.flags = 0,
 	},
 	{
 		.name = "imgstat",
 		.exec = imgstat_exec,
+		.flags = 0,
 	},
 	{
 		.name = "imgfree",
 		.exec = imgfree_exec,
+		.flags = 0,
 	},
 };
