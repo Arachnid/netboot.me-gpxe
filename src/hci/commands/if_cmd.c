@@ -164,7 +164,6 @@ static int done_exec ( int argc, char **argv ) {
 		return 1;
 	if ( for_info.is_catch ) {
 		cond = 0;
-		in_try--;
 	}
 	if ( cond || for_info.is_continue ) {
 		cur_len = start_len = for_info.loop_start;
@@ -287,6 +286,7 @@ struct command try_command __command = {
 static int catch_exec ( int argc, char **argv ) {
 	if ( else_exec ( argc, argv ) )
 		return 1;
+	in_try--;
 	loop_stack[ COUNT ( loop_stack )].is_continue = 0;
 	return 0;
 }

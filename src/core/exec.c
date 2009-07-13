@@ -63,6 +63,7 @@ extern int in_try;
 int execv ( const char *command, char * const argv[] ) {
 	struct command *cmd;
 	int argc;
+	int rc = -1;
 
 	/* Count number of arguments */
 	for ( argc = 0 ; argv[argc] ; argc++ ) {}
@@ -87,15 +88,24 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( if_stack[COUNT ( if_stack )] == 1 || cmd->flags & 0x1 )
-				return cmd->exec ( argc, ( char ** ) argv );
-			else
-				return 0;
+			if ( if_stack[COUNT ( if_stack )] == 1 || cmd->flags & 0x1 ) {
+				rc = cmd->exec ( argc, ( char ** ) argv );
+				if ( ! ( cmd->flags & 0x1 ) ) {
+					char *rc_string;
+					asprintf ( &rc_string, "%d", rc );
+					if ( rc_string )
+						storef_named_setting ( "rc", rc_string );
+					free ( rc_string );
+				} else
+					rc = 0;
+			}
+			goto done;
 		}
 	}
-
 	printf ( "%s: command not found\n", command );
 	return -ENOEXEC;
+done:
+	return rc;
 }
 
 static int expand_command ( const char *command, char **argv_stack, int *argv_count ) {
@@ -202,7 +212,6 @@ int system ( const char *command ) {
 		} else {		
 			PUSH_STACK ( argv_stack, NULL );
 			if ( argc > 0 ) {
-				char *rc_string;
 				rc = execv ( argv_stack[0], argv_stack );
 				DBG ( "in_try = %d, rc = %d\n", in_try, rc );
 				if ( rc && in_try > 0 ) {
@@ -215,10 +224,6 @@ int system ( const char *command ) {
 					for ( ; i <= COUNT ( if_stack ); i++ )
 						if_stack[i] = 0;
 				}
-				asprintf ( &rc_string, "%d", rc );
-				if ( rc_string )
-					storef_named_setting ( "rc", rc_string );
-				free ( rc_string );
 			}
 		}
 	}
