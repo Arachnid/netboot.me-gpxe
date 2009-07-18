@@ -11,10 +11,10 @@ static struct while_info for_info;
 
 INIT_STACK ( if_stack, int, 10 );
 STATIC_INIT_STACK ( else_stack, int, 10 );
-INIT_STACK ( loop_stack, struct while_info, 10 );
+STATIC_INIT_STACK ( loop_stack, struct while_info, 10 );
 extern size_t start_len;
 extern size_t cur_len;
-int in_try;
+static int in_try;
 
 /**
  * Push a value onto the if stack
