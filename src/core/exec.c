@@ -43,12 +43,9 @@ int optind;
 int nextchar;
 
 EXTERN_INIT_STACK ( if_stack, int, 10 );
-EXTERN_INIT_STACK ( loop_stack, struct while_info, 10 );
 size_t start_len;
 size_t cur_len;
-int command_source;
 int incomplete;
-extern int in_try;
 
 /**
  * Execute command
@@ -88,34 +85,32 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( if_stack[COUNT ( if_stack )] == 1 || cmd->flags & 0x1 ) {
+			if ( if_stack[COUNT ( if_stack )] == 1
+				|| cmd->flags & 0x1 ) {
+				
 				rc = cmd->exec ( argc, ( char ** ) argv );
 				if ( ! ( cmd->flags & 0x1 ) ) {
-					char *rc_string;
-					asprintf ( &rc_string, "%d", rc );
-					if ( rc_string )
-						storef_named_setting ( "rc", rc_string );
-					free ( rc_string );
-				} else
-					rc = 0;
-			}
-			goto done;
+					store_rc ( rc );
+				}
+			} else
+				rc = 0;
+			return rc;
 		}
 	}
 	printf ( "%s: command not found\n", command );
 	return -ENOEXEC;
-done:
-	return rc;
 }
 
-static int expand_command ( const char *command, char **argv_stack, int *argv_count ) {
+/** Expand a given command line and separate it into arguments */
+static int expand_command ( const char *command,
+	char **argv_stack, int *argv_count ) {
+	
 	char *head, *end;
 	int success;
 	int argc;
 	int i;
 	
 	INIT_STACK ( temp_stack, char *, 20 );
-	
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
@@ -126,13 +121,14 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 	}
 	head = expcmd.value;
 	
-	/* Expand while expansions remain */
+	/* Go through the command line and expand */
 	while ( *head ) {
-		while ( isspace ( *head ) ) {
+		while ( isspace ( *head ) ) { /* Ignore leading spaces */
 			*head = 0;
 			head++;
 		}
-		if ( *head == '#' ) { /* Comment is a new word that starts with # */
+		if ( *head == '#' ) {
+			/* Comment is a new word that starts with # */
 			break;
 		}
 		if ( !stringcpy ( &expcmd, head ) ) {
@@ -140,7 +136,9 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 			break;
 		}
 		head = expcmd.value;
-		end = expand_string ( &expcmd, head, table, 6, 0, &success );
+		end = expand_string ( &expcmd, head, table,
+			6, 0, &success );
+		
 		if ( end ) {
 			if ( success ) {
 				char *argv = expcmd.value;
@@ -184,7 +182,6 @@ static int expand_command ( const char *command, char **argv_stack, int *argv_co
 int system ( const char *command ) {
 	int argc;
 	int rc = 0;
-	int i;
 	static char *complete_command;
 	INIT_STACK ( argv_stack, char *, 20 );
 	
@@ -193,7 +190,8 @@ int system ( const char *command ) {
 		complete_command = strdup ( command );
 	} else {
 		char *tmp = complete_command;
-		asprintf ( &complete_command, "%s\n%s", complete_command, command );
+		asprintf ( &complete_command, "%s\n%s",
+			complete_command, command );
 		free ( tmp );
 	}
 	incomplete = 0;
@@ -203,7 +201,9 @@ int system ( const char *command ) {
 	
 	DBG ( "command = [%s]\n", complete_command );
 	
-	argc = expand_command ( complete_command, argv_stack, &COUNT ( argv_stack ) );
+	argc = expand_command ( complete_command, argv_stack,
+		&COUNT ( argv_stack ) );
+	
 	if ( !incomplete ) {
 		free ( complete_command );
 		complete_command = NULL;
@@ -213,17 +213,7 @@ int system ( const char *command ) {
 			PUSH_STACK ( argv_stack, NULL );
 			if ( argc > 0 ) {
 				rc = execv ( argv_stack[0], argv_stack );
-				DBG ( "in_try = %d, rc = %d\n", in_try, rc );
-				if ( rc && in_try > 0 ) {
-					DBG ( "Exiting try block\n" );
-					for ( i = 0; i < COUNT ( loop_stack ); i++ )
-						if ( loop_stack[i].is_catch )
-							break;
-					i = loop_stack[i].if_pos;
-					DBG ( "i = %d. COUNT ( loop_stack ) = %d\n", i, COUNT ( if_stack ) );
-					for ( ; i <= COUNT ( if_stack ); i++ )
-						if_stack[i] = 0;
-				}
+				test_try ( rc );
 			}
 		}
 	}

@@ -36,8 +36,8 @@ struct image_type script_image_type __image_type ( PROBE_NORMAL );
 extern size_t cur_len;
 extern int command_source;
 void init_if ();
+static int allow_bad;
 size_t get_free_heap ( void );
-int allow_bad;
 /**
  * Execute script
  *

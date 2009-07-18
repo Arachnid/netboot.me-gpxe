@@ -7,56 +7,198 @@
 
 extern int incomplete;
 
+/* Table for arithmetic expressions */
 const struct char_table arith_table[22] = {
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
-	{ .token = '"', .type = TABLE, .next = { .next_table = { .ntable = dquote_table, .len = 3 } } },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
-	{ .token = ' ', .type = ENDQUOTES },
-	{ .token = '\t', .type = ENDQUOTES },
-	{ .token = '\n', .type = ENDQUOTES },
-	{ .token = '~', .type = ENDTOK },
-	{ .token = '!', .type = ENDTOK },
-	{ .token = '*', .type = ENDTOK },
-	{ .token = '/', .type = ENDTOK },
-	{ .token = '%', .type = ENDTOK },
-	{ .token = '+', .type = ENDTOK },
-	{ .token = '-', .type = ENDTOK },
-	{ .token = '<', .type = ENDTOK },
-	{ .token = '=', .type = ENDTOK },
-	{ .token = '>', .type = ENDTOK },
-	{ .token = '&', .type = ENDTOK },
-	{ .token = '|', .type = ENDTOK },
-	{ .token = '^', .type = ENDTOK },
-	{ .token = '(', .type = ENDTOK },
-	{ .token = ')', .type = ENDTOK }
+	{
+		.token = '\\',
+		.type = FUNC,
+		.next.parse_func = parse_escape
+	},
+	{
+		.token = '"',
+		.type = TABLE,
+		.next = {
+			.next_table = {
+				.ntable = dquote_table,
+				.len = 3
+			}
+		}
+	},
+	{
+		.token = '$',
+		.type = FUNC,
+		.next.parse_func = dollar_expand
+	},
+	{
+		.token = '\'',
+		.type = TABLE,
+		.next = {
+			.next_table = {
+				.ntable = squote_table,
+				.len = 1
+			}
+		}
+	},
+	{
+		.token = ' ',
+		.type = ENDQUOTES
+	},
+	{
+		.token = '\t',
+		.type = ENDQUOTES
+	},
+	{
+		.token = '\n',
+		.type = ENDQUOTES
+	},
+	{
+		.token = '~',
+		.type = ENDTOK
+	},
+	{
+		.token = '!',
+		.type = ENDTOK
+	},
+	{
+		.token = '*',
+		.type = ENDTOK
+	},
+	{
+		.token = '/',
+		.type = ENDTOK
+	},
+	{
+		.token = '%',
+		.type = ENDTOK
+	},
+	{
+		.token = '+',
+		.type = ENDTOK
+	},
+	{
+		.token = '-',
+		.type = ENDTOK
+	},
+	{
+		.token = '<',
+		.type = ENDTOK
+	},
+	{
+		.token = '=',
+		.type = ENDTOK
+	},
+	{
+		.token = '>',
+		.type = ENDTOK
+	},
+	{
+		.token = '&',
+		.type = ENDTOK
+	},
+	{
+		.token = '|',
+		.type = ENDTOK
+	},
+	{
+		.token = '^',
+		.type = ENDTOK
+	},
+	{
+		.token = '(',
+		.type = ENDTOK
+	},
+	{
+		.token = ')',
+		.type = ENDTOK
+	}
 };
 
+/* Table for parsing text in double-quotes */
 const struct char_table dquote_table[3] = {
-	{ .token = '"', .type = ENDQUOTES },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape }
+	{
+		.token = '"',
+		.type = ENDQUOTES
+	},
+	{
+		.token = '$', .type = FUNC,
+		.next.parse_func = dollar_expand
+	},
+	{
+		.token = '\\',
+		.type = FUNC,
+		.next.parse_func = parse_escape
+	}
 };
+
+/* Table to parse text in single-quotes */
 const struct char_table squote_table[1] = {
-	{ .token = '\'', .type = ENDQUOTES }
+	{
+		.token = '\'',
+		.type = ENDQUOTES
+	}
 };
+
+/* Table to start with */
 const struct char_table table[6] = {
-	{ .token = '\\', .type = FUNC, .next.parse_func = parse_escape },
-	{ .token = '"', .type = TABLE, .next = 
-				{.next_table = { .ntable = dquote_table, .len = 3 } } },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
-	{ .token = '\'', .type = TABLE, .next = { .next_table = { .ntable = squote_table, .len = 1 } } },
-	{ .token = ' ', .type = ENDTOK },
-	{ .token = '\t', .type = ENDTOK }
+	{
+		.token = '\\',
+		.type = FUNC,
+		.next.parse_func = parse_escape
+	},
+	{
+		.token = '"',
+		.type = TABLE,
+		.next = {
+			.next_table = {
+				.ntable = dquote_table,
+				.len = 3
+			}
+		}
+	},
+	{
+		.token = '$',
+		.type = FUNC,
+		.next.parse_func = dollar_expand
+	},
+	{
+		.token = '\'',
+		.type = TABLE,
+		.next = {
+			.next_table = {
+				.ntable = squote_table,
+				.len = 1
+			}
+		}
+	},
+	{
+		.token = ' ',
+		.type = ENDTOK
+	},
+	{
+		.token = '\t',
+		.type = ENDTOK
+	}
 };
 
+/* Table to parse text after a $ */
 const struct char_table dollar_table[2] = {
-	{ .token = '}', .type = ENDTOK },
-	{ .token = '$', .type = FUNC, .next.parse_func = dollar_expand },
+	{
+		.token = '}',
+		.type = ENDTOK
+	},
+	{
+		.token = '$',
+		.type = FUNC,
+		.next.parse_func = dollar_expand
+	},
 };
 
-char * string3cat ( struct string *s1, const char *s2, const char *s3 ) { /* The len is the size of s1 */
+/** Function to combine a struct string with 2 char * */
+char * string3cat ( struct string *s1, const char *s2,
+	const char *s3 ) {
+		
 	char *tmp = s1->value;
+		
 	if ( s1->value )
 		asprintf ( &s1->value, "%s%s%s", s1->value, s2, s3 );
 	else {
@@ -68,6 +210,7 @@ char * string3cat ( struct string *s1, const char *s2, const char *s3 ) { /* The
 	return s1->value;
 }
 
+/** Function to copy a char * into a struct string */
 char * stringcpy ( struct string *s1, const char *s2 ) {
 	char *tmp = s1->value;
 	s1->value = strdup ( s2 );
@@ -75,6 +218,7 @@ char * stringcpy ( struct string *s1, const char *s2 ) {
 	return s1->value;
 }
 
+/** Function to concatenate a struct string and a char * */
 char * stringcat ( struct string *s1, const char *s2 ) {
 	char *tmp;
 	if ( !s1->value )
@@ -87,16 +231,13 @@ char * stringcat ( struct string *s1, const char *s2 ) {
 	return s1->value;
 }
 
+/** Free a struct string */
 void free_string ( struct string *s ) {
 	free ( s->value );
 	s->value = NULL;
 }
 
-/* struct string *s:
-Before: [start]$<exp>[end]
-End: [start]<expanded>[end]
-and *end points to [end]
-*/
+/** Expand the text following a $ */
 char * dollar_expand ( struct string *s, char *inp ) {
 	char *name;
 	int setting_len;
@@ -107,7 +248,8 @@ char * dollar_expand ( struct string *s, char *inp ) {
 
 	if ( inp[1] == '{' ) {
 		int success;
-		end = expand_string ( s, inp + 2, dollar_table, 2, 1, &success );
+		end = expand_string ( s, inp + 2, dollar_table,
+			2, 1, &success );
 		inp = s->value + len;
 		if ( end ) {
 			*inp = 0;
@@ -141,10 +283,12 @@ char * dollar_expand ( struct string *s, char *inp ) {
 	return end;
 }
 
+/** Deal with an escape sequence */
 char * parse_escape ( struct string *s, char *input ) {
 	char *exp;
 	char *end;
 	
+	/* Found a \ at the end of the string => more input required */
 	if ( ! input[1] ) {
 		incomplete = 1;
 		free_string ( s );
@@ -153,10 +297,12 @@ char * parse_escape ( struct string *s, char *input ) {
 	*input = 0;
 	end = input + 2;
 	if ( input[1] == '\n' ) {
+		/* For a \ at end of line, remove both \ and \n */
 		int len = input - s->value;
 		exp = stringcat ( s, end );
 		end = exp + len;
 	} else {
+		/* A \ removes the special meanig of any other character */
 		int len = input - s->value;
 		end = input + 1;
 		exp = stringcat ( s, end );
@@ -166,9 +312,12 @@ char * parse_escape ( struct string *s, char *input ) {
 }
 
 /* Return a pointer to the first unconsumed character */
-char * expand_string ( struct string *s, char *head, const struct char_table *table, int tlen, int in_quotes, int *success ) {
+char * expand_string ( struct string *s, char *head,
+	const struct char_table *table, int tlen,
+	int in_quotes, int *success ) {
+	
 	int i;
-	int cur_pos;	/* s->value may be reallocated, so this seems better */
+	int cur_pos; /* s->value may be reallocated */
 	
 	*success = 0;
 	cur_pos = head - s->value;
@@ -177,47 +326,51 @@ char * expand_string ( struct string *s, char *head, const struct char_table *ta
 		const struct char_table * tline = NULL;
 		
 		for ( i = 0; i < tlen; i++ ) {
+			/* Look for current token in the list we have */
 			if ( table[i].token == s->value[cur_pos] ) {
 				tline = table + i;
 				break;
 			}
 		}
 		
-		if ( ! tline ) {
+		if ( ! tline ) { /* If not found, copy into output */
 			*success = 1;
 			cur_pos++;
 		} else {
 			switch ( tline->type ) {
-				case ENDQUOTES: /* 0 for end of input, where next char is to be discarded. Used for ending ' or " */
+				case ENDQUOTES:
+				/* End of input, where next char is to be discarded.
+				 * Used for ending ' or " */
+				*success = 1;
+				s->value[cur_pos] = 0;
+				if ( ! stringcat ( s, s->value + cur_pos + 1 ) )
+					return NULL;
+				return s->value + cur_pos;
+				
+				case TABLE:
 				{
+				/* Recursive call. Probably found quotes */
+					int s2;
+					char *tmp;
+						
 					*success = 1;
 					s->value[cur_pos] = 0;
-					if ( ! stringcat ( s, s->value + cur_pos + 1 ) )
+					/* Remove the current character and
+					 * call recursively */
+					if ( !stringcat ( s, s->value + cur_pos + 1 ) )
 						return NULL;
-					return s->value + cur_pos;
+					
+					tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 );
+					if ( ! tmp )
+						return NULL;
+					cur_pos = tmp - s->value;
+					break;
 				}
-					break;
-				case TABLE: /* 1 for recursive call. Probably found quotes */
-					{
-						int s2;
-						char *tmp;
-						
-						*success = 1;
-						s->value[cur_pos] = 0;
-						/* Remove the current character and call recursively */
-						if ( !stringcat ( s, s->value + cur_pos + 1 ) )
-							return NULL;
-						
-						tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 );
-						if ( ! tmp )
-							return NULL;
-						cur_pos = tmp - s->value;
-					}
-					break;
 				case FUNC: /* Call another function */
 					{
 						char *tmp;
-						if ( ! ( tmp = tline->next.parse_func ( s, s->value + cur_pos ) ) )
+						if ( ! ( tmp = tline->next.parse_func
+							( s, s->value + cur_pos ) ) )
 							return NULL;
 						if ( tmp - s->value != cur_pos )
 							*success = 1;
@@ -225,7 +378,9 @@ char * expand_string ( struct string *s, char *head, const struct char_table *ta
 					}
 					break;
 					
-				case ENDTOK: /* End of input, and we also want next character */
+				case ENDTOK:
+					/* End of input, and we also want next
+					 * character */
 					return s->value + cur_pos;
 					break;
 			}
@@ -233,6 +388,7 @@ char * expand_string ( struct string *s, char *head, const struct char_table *ta
 		
 	}
 	if ( in_quotes ) {
+		/* We haven't found the closing quotes */
 		incomplete = 1;
 		free_string ( s );
 		return NULL;

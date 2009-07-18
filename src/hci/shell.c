@@ -37,7 +37,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 static const char shell_prompt[] = "gPXE> ";
 extern size_t cur_len;
 extern int incomplete;
-extern int command_source;
+int command_source;
 size_t get_free_heap ( void );
 /** Flag set in order to exit shell */
 static int exit_flag = 0;
@@ -107,7 +107,8 @@ void shell ( void ) {
 			line = strndup ( input.value + offset, len );
 		} else {
 			offset = input.value ? strlen ( input.value ) : 0;
-			line = readline ( shell_prompt + ( incomplete ? 4 : 0 ) );
+			line = readline ( shell_prompt
+				+ ( incomplete ? 4 : 0 ) );
 			string3cat ( &input, line, "\n"	);
 		}
 		if ( line ) {

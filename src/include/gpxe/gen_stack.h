@@ -1,70 +1,51 @@
 #ifndef _GPXE_GEN_STACK_H
 #define _GPXE_GEN_STACK_H
 
-
 #include <ctype.h>
 #include <errno.h>
-#include <gpxe/list.h>
 
-#if 0
-struct generic_stack {
-	void *ptr;
-	int tos;
-};
-
-void init_generic_stack ( struct generic_stack *stack );
-int push_generic_stack_ ( struct generic_stack *stack, void *str, int is_string, size_t size );	/* Use is_string = 1 to allocate a new string on the heap */
-int pop_generic_stack_ ( struct generic_stack *stack, void *ptr, size_t size );
-void free_generic_stack ( struct generic_stack *stack, int on_stack, size_t size );			/* Use on_stack = 1 to free stack values on the heap */
-
-#define  push_generic_stack( stack, ptr, is_string ) push_generic_stack_ ( stack, ptr, is_string, sizeof ( typeof ( *ptr ) ) )
-
-#define pop_generic_stack( stack, ptr ) pop_generic_stack_ ( stack, ptr, sizeof ( *ptr ) )
-
-
-/* convenience macros */
-#define TOP_GEN_STACK_INT( stack ) ( ( ( int * ) ( stack )->ptr )[( stack )->tos] )
-#define ELEMENT_GEN_STACK_INT( stack, pos ) ( ( ( int * ) ( stack )->ptr )[pos] )
-#define SIZE_GEN_STACK( stack ) ( ( ( stack ) ->tos ) + 1 )
-
-#define TOP_GEN_STACK_STRING( stack ) ( ( ( char ** ) ( stack )->ptr )[( stack )->tos] )
-#define ELEMENT_GEN_STACK_STRING( stack, pos ) ( ( ( char ** ) ( stack )->ptr )[pos] )
-
-#endif 
-
+/** Macro to define tos variable */
 #define COUNT( stack ) _##stack##_tos
 
-#define INIT_STACK( stack, type, size ) \
-	typeof ( type ) stack[size]; \
-	int COUNT ( stack ) = -1;
-	
-#define EXTERN_INIT_STACK( stack, type, size ) \
-	extern typeof ( type ) stack[size]; \
-	extern int COUNT ( stack ); 
-	
-#define STATIC_INIT_STACK( stack, type, size ) \
-	static typeof ( type ) stack[size];	\
-	static int COUNT ( stack ) = -1;
+/** Define a stack of the given name, type and size */
+#define INIT_STACK( name, type, size ) \
+	typeof ( type ) name[size]; \
+	int COUNT ( name ) = -1;
 
+/** Define an extern stack with the given name, type and soze */
+#define EXTERN_INIT_STACK( name, type, size ) \
+	extern typeof ( type ) name[size]; \
+	extern int COUNT ( name ); 
+
+/** Define a static stack with the given name, type and size */
+#define STATIC_INIT_STACK( name, type, size ) \
+	static typeof ( type ) name[size];	\
+	static int COUNT ( name ) = -1;
+
+/** Push a value onto the stack */
 #define PUSH_STACK( stack, value ) do {				\
 		COUNT ( stack ) += 1;						\
 		stack[COUNT ( stack )] = value;				\
 } while ( 0 );
 
+/** Use strdup to allocate a string on the heap and push it onto he stack */
 #define PUSH_STACK_STRING( stack, value ) do {				\
 		COUNT ( stack ) += 1;						\
 		stack[COUNT ( stack )] = strdup ( value );		\
 } while ( 0 );
 
+/** Pop a value off the stack */
 #define POP_STACK( stack, value ) do {				\
 	value = stack[COUNT ( stack )];					\
 	COUNT ( stack ) -= 1;							\
 } while ( 0 );
 
+/** Empty the stack */
 #define FREE_STACK( stack ) do {						\
 	COUNT ( stack ) = -1;							\
 } while ( 0 );
 
+/** Call free() on each element in the stack */
 #define FREE_STACK_STRING( stack ) do {				\
 	int i;											\
 	for ( i = 0; i <= COUNT ( stack ); i++ )				\
