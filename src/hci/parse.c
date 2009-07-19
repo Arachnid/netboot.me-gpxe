@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <gpxe/settings.h>
 
-extern int incomplete;
+int incomplete;
 
 /* Table for arithmetic expressions */
 const struct char_table arith_table[22] = {

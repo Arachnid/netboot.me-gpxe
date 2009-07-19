@@ -58,6 +58,8 @@ extern const struct char_table squote_table[1];
 extern const struct char_table arith_table[22];
 extern const struct char_table table[6];
 
+extern int incomplete;
+
 /* Functions to act on struct string */
 extern void free_string ( struct string *s );
 extern char * string3cat ( struct string *s1, const char *s2, const char *s3 );

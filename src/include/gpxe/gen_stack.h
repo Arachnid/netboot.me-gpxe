@@ -40,6 +40,11 @@
 	COUNT ( stack ) -= 1;							\
 } while ( 0 );
 
+#define DUP_STACK( array, stack, count ) do {				\
+	memcpy ( array, stack, ( COUNT ( stack ) + 1 ) * sizeof ( typeof ( stack[0] ) ) );	\
+	count = COUNT ( stack );	\
+} while ( 0 );
+
 /** Empty the stack */
 #define FREE_STACK( stack ) do {						\
 	COUNT ( stack ) = -1;							\
@@ -52,15 +57,5 @@
 		free ( stack[i] );							\
 	FREE_STACK ( stack );							\
 } while ( 0 );
-
-struct while_info {
-	int loop_start;
-	int if_pos;
-	int is_continue;
-	int is_catch;
-	int cur_arg;
-};
-
-void free_command_list();
 
 #endif

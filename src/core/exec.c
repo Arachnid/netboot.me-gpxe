@@ -31,6 +31,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/parse.h>
 #include <gpxe/gen_stack.h>
 #include <gpxe/settings.h>
+#include <hci/if_cmd.h>
 
 /** @file
  *
@@ -38,14 +39,11 @@ FILE_LICENCE ( GPL2_OR_LATER );
  *
  */
 
+#define MAX_ARGC 68
+
 /* Avoid dragging in getopt.o unless a command really uses it */
 int optind;
 int nextchar;
-
-EXTERN_INIT_STACK ( if_stack, int, 10 );
-size_t start_len;
-size_t cur_len;
-int incomplete;
 
 /**
  * Execute command
@@ -108,9 +106,8 @@ static int expand_command ( const char *command,
 	char *head, *end;
 	int success;
 	int argc;
-	int i;
 	
-	INIT_STACK ( temp_stack, char *, 20 );
+	INIT_STACK ( temp_stack, char *, MAX_ARGC );
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
@@ -164,9 +161,7 @@ static int expand_command ( const char *command,
 		}
 		head = expcmd.value;
 	}
-	for ( i = 0; i < 20; i++ )
-		argv_stack[i] = temp_stack[i];
-	*argv_count = COUNT ( temp_stack );
+	DUP_STACK ( argv_stack, temp_stack, *argv_count );
 	free_string ( &expcmd );
 	return argc;
 }
@@ -183,7 +178,7 @@ int system ( const char *command ) {
 	int argc;
 	int rc = 0;
 	static char *complete_command;
-	INIT_STACK ( argv_stack, char *, 20 );
+	INIT_STACK ( argv_stack, char *, MAX_ARGC );
 	
 	if ( !incomplete ) {
 		start_len = cur_len;

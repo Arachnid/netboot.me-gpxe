@@ -6,15 +6,17 @@
 #include <gpxe/init.h>
 #include <gpxe/settings.h>
 #include <gpxe/parse.h>
+#include <hci/if_cmd.h>
 
 static struct while_info for_info;
 
-INIT_STACK ( if_stack, int, 10 );
-STATIC_INIT_STACK ( else_stack, int, 10 );
-STATIC_INIT_STACK ( loop_stack, struct while_info, 10 );
-extern size_t start_len;
-extern size_t cur_len;
+INIT_STACK ( if_stack, int, IF_SIZE );
+STATIC_INIT_STACK ( else_stack, int, IF_SIZE );
+STATIC_INIT_STACK ( loop_stack, struct while_info, IF_SIZE );
 static int in_try;
+
+size_t start_len;
+size_t cur_len;
 
 /**
  * Push a value onto the if stack

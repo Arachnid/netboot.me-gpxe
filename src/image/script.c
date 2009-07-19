@@ -31,11 +31,11 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <errno.h>
 #include <gpxe/image.h>
 #include <gpxe/parse.h>
+#include <hci/if_cmd.h>
 
 struct image_type script_image_type __image_type ( PROBE_NORMAL );
-extern size_t cur_len;
+
 extern int command_source;
-void init_if ();
 static int allow_bad;
 size_t get_free_heap ( void );
 /**

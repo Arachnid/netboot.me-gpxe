@@ -27,6 +27,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/shell.h>
 #include <gpxe/parse.h>
 
+#include <hci/if_cmd.h>
+
 /** @file
  *
  * Minimal command shell
@@ -35,8 +37,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 
 /** The shell prompt string */
 static const char shell_prompt[] = "gPXE> ";
-extern size_t cur_len;
-extern int incomplete;
+
 int command_source;
 size_t get_free_heap ( void );
 /** Flag set in order to exit shell */
@@ -98,6 +99,7 @@ void shell ( void ) {
 	size_t offset = 0;
 	struct string input = { .value = 0 };
 	exit_flag = 0;
+	init_if();
 	printf ( "BEFORE: %i\n", get_free_heap () );
 	while ( ! exit_flag ) {
 		int len;
