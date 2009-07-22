@@ -82,7 +82,7 @@ static void input ( void ) {
 	char *strtmp = NULL;
 	char *end;
 	int success;
-	int start;
+	long start;
 	
 	if ( tok == -1 )
 		return;
@@ -231,8 +231,8 @@ static int parse_num ( char **buffer ) {
 	
 		if ( accept ( TOK_MINUS ) ) /* Look for a leading sign */
 			flag = 1;
-		else if ( accept ( TOK_PLUS ) ) {
-		}
+		else
+			accept ( TOK_PLUS );
 
 		if ( accept ( '(' ) ) {
 			parse_expr ( buffer );
