@@ -42,7 +42,6 @@
 static struct string *input_str;
 static char *inp_ptr = NULL;
 static int tok;
-static int err_val;
 static union {
 	long num_value;
 	char *str_value;
@@ -84,29 +83,28 @@ static void input ( void ) {
 	int success;
 	long start;
 	
-	if ( tok == -1 )
+	if ( tok < 0 )
 		return;
-	
+
 	/* Whitespace between tokens is irrelevant */
 	ignore_whitespace();
 	
 	/* Encounter end of input before closing paren => incomplete */
 	if ( *inp_ptr == '\0' ) {
 		incomplete = 1;
-		tok = -1;
-		err_val = -EINCOMPL;
+		tok = -EINCOMPL;
 		return;
 	}
 	tok = 0;
 	
 	start = inp_ptr - input_str->value;
 	end = expand_string ( input_str, inp_ptr, arith_table,
-		22, 1, &success );
+		sizeof ( arith_table ) / sizeof ( arith_table[0] ),
+		1, &success );
 	
 	/* Either incomplete or out of memory */
 	if ( !end ) {
-		tok = -1;
-		err_val = incomplete ? -EINCOMPL : -ENOMEM;
+		tok = incomplete ? -EINCOMPL : -ENOMEM;
 		return;
 	}
 	
@@ -114,15 +112,18 @@ static void input ( void ) {
 	if ( success ) {
 		strtmp = strndup ( input_str->value + start,
 			( end - input_str->value ) - start );
-		if ( isnum ( strtmp, &tok_value.num_value ) ) {
-			free ( strtmp );
-			tok = TOK_NUMBER;
-			DBG ( "found number: %ld\n", tok_value.num_value );
-		} else {
-			tok_value.str_value = strtmp;
-			tok = TOK_STRING;
-			DBG ( "found string: [%s]\n", tok_value.str_value );
-		}
+		if ( strtmp ) {
+			if ( isnum ( strtmp, &tok_value.num_value ) ) {
+				free ( strtmp );
+				tok = TOK_NUMBER;
+				DBG ( "found number: %ld\n", tok_value.num_value );
+			} else {
+				tok_value.str_value = strtmp;
+				tok = TOK_STRING;
+				DBG ( "found string: [%s]\n", tok_value.str_value );
+			}
+		} else
+			tok = -ENOMEM;
 		inp_ptr = end;
 		return;
 	}
@@ -163,24 +164,11 @@ static void input ( void ) {
  * @v num		Pointer to store the converted value
  * @ret isnum		Whether the string is a number or not
  */
-int isnum ( char *string, long *num ) {
-	int flag = 0;
-	
-	*num = 0;
-	if ( *string == '+' ) {
-		string++;
-	} else if ( *string == '-' ) {
-		flag = 1;
-		string++;
-	}
-	*num = strtoul ( string, &string, 0 );
-	if ( *string != 0 ) {
-		*num = 0;
-		return 0;
-	}
-	if ( flag )
-		*num = -*num;
-	return 1;
+int isnum ( char *string, long *num ) {	
+	*num = strtoul ( string, &string, 10 );
+	if ( *string == 0 )
+		return 1;
+	return 0;
 }
 
 /** Skip over whitespaces */
@@ -211,7 +199,7 @@ static int accept ( int ch ) {
  */
 static void skip ( int ch ) {
 	if ( !accept ( ch ) ) {
-		err_val = -EPARSE;
+		tok = -EPARSE;
 	}
 }
 
@@ -236,14 +224,14 @@ static int parse_num ( char **buffer ) {
 
 		if ( accept ( '(' ) ) {
 			parse_expr ( buffer );
-			if ( err_val )	{
-				return ( err_val );
+			if ( tok < 0 )	{
+				return ( tok );
 			}
 			skip ( ')' );
-			if ( err_val )	{
+			if ( tok < 0 )	{
 				free ( *buffer );
 				*buffer = NULL;
-				return (err_val );
+				return ( tok );
 			}
 			if ( flag ) {	/* Had found a - sign */
 				int t;
@@ -251,11 +239,11 @@ static int parse_num ( char **buffer ) {
 				free ( *buffer );
 				*buffer = NULL;
 				if ( t == 0 )	/* Trying to do a -string */
-					err_val = -EWRONGOP;
-				if ( err_val )
-					return err_val;
+					tok = -EWRONGOP;
+				if ( tok < 0 )
+					return tok;
 				return ( ( asprintf ( buffer, "%ld", -num )  < 0 )
-					? (err_val = -ENOMEM ) : 0 );
+					? ( tok = -ENOMEM ) : 0 );
 			}
 			return 0;
 		}
@@ -266,26 +254,27 @@ static int parse_num ( char **buffer ) {
 			else
 				num = tok_value.num_value;
 			input();
-			if ( err_val )
-				return err_val;
+			if ( tok < 0 )
+				return tok;
 			return ( ( asprintf ( buffer, "%ld", num ) < 0)
-				? (err_val = -ENOMEM ) : 0 );
+				? ( tok = -ENOMEM ) : 0 );
 		}
 		/* Error if nothing found */
-		return ( err_val = -EPARSE );
+		return ( tok = -EPARSE );
 	}
 	/* Look for a string instead */
 	if ( tok == TOK_STRING ) {
 		*buffer = tok_value.str_value;
+		tok_value.str_value = NULL;
 		input();
-		if ( err_val ) {
+		if ( tok < 0 ) {
 			free ( *buffer );
 			*buffer = NULL;
 		}
-		return err_val;
+		return ( tok < 0 ) ? tok : 0;
 	}
 	/* If nothing found, it is an error */
-	return ( err_val = -EPARSE );
+	return ( tok = -EPARSE );
 }
 
 /**
@@ -313,7 +302,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 	
 	/* Check for the type of operands required by the operator */
 	if ( op <= 17 && ! bothints ) {
-		return ( err_val = -EWRONGOP );
+		return ( tok = -EWRONGOP );
 	}
 	
 	switch(op)
@@ -331,7 +320,7 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 			if(rhs != 0)
 				value = lhs / rhs;
 			else {
-				return ( err_val = -EDIV0 );
+				return ( tok = -EDIV0 );
 			}
 			break;
 		case 4: 
@@ -386,10 +375,10 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
 			/* This means the operator is in the op_table,
 			 * but not defined in this switch statement
 			 */
-			return ( err_val = -ENOOP );
+			return ( tok = -ENOOP );
 	}
 	return ( ( asprintf(buffer, "%ld", value)  < 0)
-		? ( err_val = -ENOMEM ) : 0 );
+		? ( tok = -ENOMEM ) : 0 );
 }
 
 /**
@@ -405,7 +394,7 @@ static int parse_prio(int prio, char **buffer) {
 	
 	lc = NULL;
 	if ( tok < 0 ) {
-		return err_val;
+		return tok;
 	}
 	/* Check for a non-operator or something that starts a number */
 	if ( tok < MIN_TOK || tok == TOK_MINUS
@@ -413,19 +402,25 @@ static int parse_prio(int prio, char **buffer) {
 		parse_num ( &lc );
 	} else if ( tok < MIN_TOK + 2 ) { /* A unary operator */
 	} else {
-			err_val = -EPARSE;
+			if ( tok == TOK_STRING )
+				free ( tok_value.str_value );
+			tok = -EPARSE;
 		}
 	
-	if ( err_val ) {
+	if ( tok < 0 ) {
 		free ( lc );
-		return err_val;
+		return tok;
 	}
 	/* Do until end of input or a close paren */
-	while( tok != -1 && tok != ')' ) {
+	while( tok >= 0 && tok != ')' ) {
 		if ( tok < MIN_TOK ) {
 			free(lc);
 			*buffer = NULL;
-			return ( err_val = -EPARSE );
+			if ( tok == TOK_STRING ) {
+				free ( tok_value.str_value );
+				tok_value.str_value = NULL;
+			}
+			return ( tok = -EPARSE );
 		}
 		/* Continue until an operator is found that:
 		 * If left-associative, it has priority <= prio
@@ -440,17 +435,18 @@ static int parse_prio(int prio, char **buffer) {
 		input();
 		parse_prio ( op_prio[op - MIN_TOK], &rc );
 		
-		if ( err_val )	{
+		if ( tok < 0 )	{
+			DBG ( "freeing %s\n", lc );
 			free ( lc );
 			*buffer = NULL;
-			return err_val;
+			return tok;
 		}
 		/* Evaluate the expression */
 		eval ( op - MIN_TOK, lc, rc, buffer );
 		free ( rc );
 		free ( lc );
-		if ( err_val )
-			return err_val;
+		if ( tok < 0 )
+			return tok;
 		lc = *buffer;
  	}
 	*buffer = lc;
@@ -480,15 +476,15 @@ char * parse_arith ( struct string *inp, char *orig ) {
 	start = orig - inp->value;
 	
 	input_str = inp;
-	err_val = tok = 0;
+	tok = 0;
 	inp_ptr = orig + 1;
 	
 	input();
 	skip ( '(' );
 	parse_expr ( &buffer );
-	if ( !err_val ) {
+	if ( tok >= 0 ) {
 		if ( tok != ')' ) {
-			err_val = -EPARSE;
+			tok = -EPARSE;
 		} else {
 			orig = inp->value + start;
 			*orig = 0;
@@ -498,11 +494,11 @@ char * parse_arith ( struct string *inp, char *orig ) {
 		}
 	}
 	free ( buffer );
-	if ( err_val )	{
+	if ( tok < 0 )	{
 		
 		if ( tok == TOK_STRING )
 			free ( tok_value.str_value );
-		switch ( err_val ) {
+		switch ( tok ) {
 			case -EPARSE:
 				printf ( "parse error\n" );
 				break;
