@@ -8,27 +8,26 @@ FILE_LICENCE ( GPL2_OR_LATER );
 
 static int input_exec ( int argc, char **argv ) {
 	int rc;
-	char *cmd_name;
 	unsigned int flags = 0;
 
-	cmd_name = argv[0];
-	argc -= 1;
-	argv++;
-	if ( argc >= 1 && argv[0][0] == '-' && argv[0][1] == 'p' ) {
-		flags |= EDITBOX_STARS;
-		argc -= 1;
-		argv++;
+	switch (argc) {
+		case 3:
+			break;
+		case 4:
+			if ( !strcmp ( argv[1], "-p" ) ||
+			     !strcmp ( argv[1], "--password" ) ) {
+				flags |= EDITBOX_STARS;
+				argv++;
+				break;
+			}
+		default:
+			printf ( "Usage: %s [-p|--password] setting prompt\n\n"
+				 "  Prompt for user input string and store it "
+				 "to a setting.\n", argv[0] );
+			return 1;
 	}
 
-	if ( argc != 2 ) {
-		printf ( "Usage: %s [-p|--password] setting prompt\n"
-             "\n"
-						 "  Prompt for user input string and store it to a setting.\n",
-						 cmd_name );
-		return 1;
-	}
-
-	if ( ( rc = input_ui(argv[0], argv[1], flags ) ) != 0 ) {
+	if ( ( rc = input_ui(argv[1], argv[2], flags ) ) != 0 ) {
 		printf ( "Could not get input: %s\n",
 			 strerror ( rc ) );
 		return 1;
