@@ -46,7 +46,7 @@ struct char_table {
 
 extern char * parse_arith ( struct string *inp, char *inp_str );
 extern char * expand_string ( struct string *s, char *head,
-	const struct char_table *table, int tlen, int in_quotes, int *success );
+	const struct char_table *table, int tlen, int in_quotes );
 
 extern char * dollar_expand ( struct string *s, char *inp );
 extern char * parse_escape ( struct string *s, char *input );

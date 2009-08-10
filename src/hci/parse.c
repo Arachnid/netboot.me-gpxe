@@ -247,9 +247,8 @@ char * dollar_expand ( struct string *s, char *inp ) {
 	len = inp - s->value;
 
 	if ( inp[1] == '{' ) {
-		int success;
 		end = expand_string ( s, inp + 2, dollar_table,
-			2, 1, &success );
+			2, 1 );
 		inp = s->value + len;
 		if ( end ) {
 			*inp = 0;
@@ -314,12 +313,11 @@ char * parse_escape ( struct string *s, char *input ) {
 /* Return a pointer to the first unconsumed character */
 char * expand_string ( struct string *s, char *head,
 	const struct char_table *table, int tlen,
-	int in_quotes, int *success ) {
+	int in_quotes ) {
 	
 	int i;
 	int cur_pos; /* s->value may be reallocated */
-	
-	*success = 0;
+
 	cur_pos = head - s->value;
 	
 	while ( s->value[cur_pos] ) {
@@ -334,14 +332,12 @@ char * expand_string ( struct string *s, char *head,
 		}
 		
 		if ( ! tline ) { /* If not found, copy into output */
-			*success = 1;
 			cur_pos++;
 		} else {
 			switch ( tline->type ) {
 				case ENDQUOTES:
 				/* End of input, where next char is to be discarded.
 				 * Used for ending ' or " */
-				*success = 1;
 				s->value[cur_pos] = 0;
 				if ( ! stringcat ( s, s->value + cur_pos + 1 ) )
 					return NULL;
@@ -350,17 +346,15 @@ char * expand_string ( struct string *s, char *head,
 				case TABLE:
 				{
 				/* Recursive call. Probably found quotes */
-					int s2;
 					char *tmp;
-						
-					*success = 1;
+
 					s->value[cur_pos] = 0;
 					/* Remove the current character and
 					 * call recursively */
 					if ( !stringcat ( s, s->value + cur_pos + 1 ) )
 						return NULL;
 					
-					tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1, &s2 );
+					tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1 );
 					if ( ! tmp )
 						return NULL;
 					cur_pos = tmp - s->value;
@@ -372,8 +366,6 @@ char * expand_string ( struct string *s, char *head,
 						if ( ! ( tmp = tline->next.parse_func
 							( s, s->value + cur_pos ) ) )
 							return NULL;
-						if ( tmp - s->value != cur_pos )
-							*success = 1;
 						cur_pos = tmp - s->value;
 					}
 					break;

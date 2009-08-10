@@ -104,7 +104,6 @@ static int expand_command ( const char *command,
 	char **argv_stack, int *argv_count ) {
 	
 	char *head, *end;
-	int success;
 	int argc;
 	
 	INIT_STACK ( temp_stack, char *, MAX_ARGC );
@@ -134,27 +133,25 @@ static int expand_command ( const char *command,
 		}
 		head = expcmd.value;
 		end = expand_string ( &expcmd, head, table,
-			6, 0, &success );
+			6, 0 );
 		
 		if ( end ) {
-			if ( success ) {
-				char *argv = expcmd.value;
-				argc++;
-				expcmd.value = NULL;
-				PUSH_STACK ( temp_stack, argv );
-				if ( !stringcpy ( &expcmd, end ) ) {
-					DBG ( "out of memory while pushing: %s\n", argv );
-					argc = -ENOMEM;
-					break;
-				}
-				*end = 0;
-				/*
-				So if the command is: word1 word2 word3
-				argv_stack:	word1\0word2 word3
-							word2\0word3
-							word3
-				*/
+			char *argv = expcmd.value;
+			argc++;
+			expcmd.value = NULL;
+			PUSH_STACK ( temp_stack, argv );
+			if ( !stringcpy ( &expcmd, end ) ) {
+				DBG ( "out of memory while pushing: %s\n", argv );
+				argc = -ENOMEM;
+				break;
 			}
+			*end = 0;
+			/*
+			So if the command is: word1 word2 word3
+			argv_stack:	word1\0word2 word3
+						word2\0word3
+						word3
+			*/
 		} else {
 			argc = -ENOMEM;
 			break;

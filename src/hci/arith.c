@@ -80,7 +80,6 @@ static void input ( void ) {
 	char *p1, *p2;
 	char *strtmp = NULL;
 	char *end;
-	int success;
 	long start;
 	
 	if ( tok < 0 )
@@ -97,10 +96,36 @@ static void input ( void ) {
 	}
 	tok = 0;
 	
+	if ( inp_ptr[0] == '(' || inp_ptr[0] == ')' ) {
+		tok = *inp_ptr++;
+		return;
+	}
+	
+	/* Check for an operator */
+	t_op[0] = inp_ptr[0];
+	p1 = strstr ( op_table, t_op );
+	if ( p1 ) {
+		inp_ptr++;
+		t_op[1] = *inp_ptr;
+		p2 = strstr ( op_table, t_op );
+		if ( !p2 || p1 == p2 ) {
+			if ( ( p1 - op_table ) % 3 ) {
+				/* Without this, it would take '=' as '<=' */
+				tok = *t_op;
+				return;
+			}
+			tok = MIN_TOK + ( p1 - op_table ) / 3;
+			return;
+		}
+		inp_ptr++;
+		tok = MIN_TOK + ( p2 - op_table ) / 3;
+		return;
+	}
+
 	start = inp_ptr - input_str->value;
 	end = expand_string ( input_str, inp_ptr, arith_table,
 		sizeof ( arith_table ) / sizeof ( arith_table[0] ),
-		1, &success );
+		1 );
 	
 	/* Either incomplete or out of memory */
 	if ( !end ) {
@@ -108,53 +133,22 @@ static void input ( void ) {
 		return;
 	}
 	
-	/* success = 1 when a string/number is found */
-	if ( success ) {
-		strtmp = strndup ( input_str->value + start,
-			( end - input_str->value ) - start );
-		if ( strtmp ) {
-			if ( isnum ( strtmp, &tok_value.num_value ) ) {
-				free ( strtmp );
-				tok = TOK_NUMBER;
-				DBG ( "found number: %ld\n", tok_value.num_value );
-			} else {
-				tok_value.str_value = strtmp;
-				tok = TOK_STRING;
-				DBG ( "found string: [%s]\n", tok_value.str_value );
-			}
-		} else
-			tok = -ENOMEM;
-		inp_ptr = end;
-		return;
-	}
-	
-	/* Check for an operator */
-	t_op[0] = *inp_ptr++;
-	p1 = strstr ( op_table, t_op );
-	if ( !p1 ) {
-		/* The character is not present in the list of operators
-		 * => it is not a string or an operator: usually a paren.
-		 * Let the parser deal with it.
-		 */
-		tok = *t_op;
-		return;
-	}
-	
-	t_op[1] = *inp_ptr;
-	p2 = strstr ( op_table, t_op );
-	if ( !p2 || p1 == p2 ) {
-		if ( ( p1 - op_table ) % 3 ) {
-			/* Without this, it would take '=' as '<=' */
-			tok = *t_op;
-			return;
+	strtmp = strndup ( input_str->value + start,
+		( end - input_str->value ) - start );
+	if ( strtmp ) {
+		if ( isnum ( strtmp, &tok_value.num_value ) ) {
+			free ( strtmp );
+			tok = TOK_NUMBER;
+			DBG ( "found number: %ld\n", tok_value.num_value );
+		} else {
+			tok_value.str_value = strtmp;
+			tok = TOK_STRING;
+			DBG ( "found string: [%s]\n", tok_value.str_value );
 		}
-		
-		tok = MIN_TOK + ( p1 - op_table ) / 3;
-		return;
-	}
-	inp_ptr++;
-	tok = MIN_TOK + ( p2 - op_table ) / 3;
-
+	} else
+		tok = -ENOMEM;
+	inp_ptr = end;
+	return;
 }
 
 /**
