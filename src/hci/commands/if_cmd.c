@@ -10,9 +10,9 @@
 
 static struct while_info for_info;
 
-INIT_STACK ( if_stack, int, IF_SIZE );
-STATIC_INIT_STACK ( else_stack, int, IF_SIZE );
-STATIC_INIT_STACK ( loop_stack, struct while_info, IF_SIZE );
+STACK ( if_stack );
+STACK ( else_stack );
+STACK ( loop_stack );
 static int in_try;
 
 size_t start_len;
@@ -28,17 +28,21 @@ size_t cur_len;
  */
 static int push_if ( int cond ) {
 	int rc;
+	int *if_pos;
+	int *else_pos;
 	
 	/* cond is pushed only if the previous value is true */
-	cond = if_stack[COUNT ( if_stack ) ] && cond;
+	cond = * ( int * ) stack_top ( &if_stack ) && cond;
 	/* Both the if and else stacks are to be pushed together */
-	assert ( COUNT ( if_stack ) == COUNT ( else_stack ) );
-	PUSH_STACK ( if_stack, cond );
-	PUSH_STACK ( else_stack, 0 );
+	assert ( stack_size ( &if_stack ) == stack_size ( &else_stack ) );
+	if_pos = stack_push ( &if_stack, int );
+	if ( if_pos )
+		*if_pos = cond;
+	else_pos = stack_push ( &else_stack, int );
+	if ( else_pos )
+		*else_pos = 0;
 	
-	rc = COUNT ( if_stack ) < 0 || COUNT ( else_stack ) < 0;
-	DBG ( "if_stack size = %d, else_stack size = %d. rc = %d\n",
-		COUNT ( if_stack ), COUNT ( else_stack ), rc );
+	rc = !if_pos || !else_pos;
 	return rc;
 }
 
@@ -49,18 +53,19 @@ static int push_if ( int cond ) {
  * @ret rc		Non-zero if error occurs
  */
 static int pop_if ( int *cond ) {
-	int else_c, if_c;
-	assert ( COUNT ( if_stack ) == COUNT ( else_stack ) );
+	int if_c;
+	assert ( stack_size ( &if_stack ) == stack_size ( &else_stack ) );
 	
 	/* At all times, have at least one value on the if stack */
-	if ( COUNT ( if_stack ) > 0 ) {
-		POP_STACK ( if_stack, if_c );
-		POP_STACK ( else_stack, else_c );
+	if ( stack_size ( &if_stack ) > 0 ) {
+		if_c = * ( int * ) stack_top ( &if_stack );
+		stack_pop ( &if_stack );
+		stack_pop ( &else_stack );
 		if ( cond )
 			*cond = if_c;
 		return 0;
 	}
-	return 1;	
+	return 1;
 }
 
 /**
@@ -90,15 +95,18 @@ struct command if_command __command = {
 /** The "fi" command
  */
 static int fi_exec ( int argc, char **argv ) {
+	int if_size;
+	int loop_size;
+	
 	if ( argc != 1 ) {
 		printf ( "Usage: %s\n", argv[0] );
 		return 1;
 	}
-	
-	/* if the if_stack is not empty and this is not a loop */
-	if ( COUNT ( if_stack ) > 0 && ( COUNT ( loop_stack ) < 0
-		|| COUNT ( if_stack ) !=
-			loop_stack[COUNT ( loop_stack )].if_pos ) )
+	if_size = stack_size ( &if_stack );
+	loop_size = stack_size ( &loop_stack );
+	/* if the if_stack is not empty and this is not a loop */	
+	if ( if_size > 1 && ( loop_size == 0 ||
+		( ( struct while_info * ) stack_top ( &loop_stack ) )->if_pos != if_size ) )
 		return pop_if ( NULL );
 	printf ( "fi without if\n" );
 	return 1;
@@ -119,16 +127,16 @@ static int else_exec ( int argc, char **argv ) {
 		return 1;
 	}
 
-	if ( else_stack[COUNT ( else_stack ) ] != 0
-		|| COUNT ( if_stack ) <= 0 ) {
+	if ( * ( int * ) stack_top ( &else_stack ) != 0
+		|| stack_size ( &if_stack ) <= 1 ) {
 
 		printf ( "else without if\n" );
 		return 1;
 	}
-	else_stack[COUNT ( else_stack ) ] = 1;
+	* ( int * ) stack_top ( &else_stack ) = 1;
 	
-	if ( if_stack[COUNT ( if_stack ) - 1] )
-		if_stack[COUNT ( if_stack )] = !if_stack[COUNT ( if_stack )];
+	if ( element_at ( &if_stack, int, stack_size ( &if_stack ) - 2 ) )
+		* ( int * ) stack_top ( &if_stack ) = ! * ( int * ) stack_top ( &if_stack );
 	
 	return 0;
 }
@@ -143,11 +151,18 @@ struct command else_command __command = {
 /** Reset the branch and loop stacks
  */
 void init_if ( void ) {
-	COUNT ( if_stack ) = -1;
-	COUNT ( else_stack ) = -1;
-	COUNT ( loop_stack ) = -1;
-	PUSH_STACK ( if_stack, 1 );
-	PUSH_STACK ( else_stack, 1 );
+	int *if_pos;
+	int *else_pos;
+	
+	//free_stack ( &if_stack );
+	//free_stack ( &else_stack );
+	//free_stack ( &loop_stack );
+	if_pos = stack_push ( &if_stack, int );
+	else_pos = stack_push ( &else_stack, int );
+	if ( if_pos )
+		*if_pos = 1;
+	if ( else_pos )
+		*else_pos = 0;
 	for_info.cur_arg = 0;
 	return;
 }
@@ -160,21 +175,25 @@ struct init_fn initialise_if __init_fn ( INIT_NORMAL ) = {
  */
 static int while_exec ( int argc, char **argv ) {
 	struct while_info w;
+	struct while_info *w_pos;
+	
 	if ( argc != 2 ) {
 		printf ( "Usage: while <condition>\n" );
 		return 1;
 	}
 	if ( if_exec ( argc, argv ) != 0 )
 		return 1;
-	else_stack[COUNT ( else_stack )] = 1;
+	* ( int * ) stack_top ( &else_stack ) = 1;
 	
 	w.loop_start = start_len;
-	w.if_pos = COUNT ( if_stack );
+	w.if_pos = stack_size ( &if_stack ) - 1;
 	w.is_continue = 0;
 	w.cur_arg = 0;
 	w.is_catch = 0;
-	PUSH_STACK ( loop_stack, w );
-	return ( loop_stack == NULL );
+	w_pos = stack_push ( &loop_stack, struct while_info );
+	if ( w_pos )
+		*w_pos = w;
+	return ( w_pos == NULL );
 }
 
 /** "while" command */
@@ -195,11 +214,12 @@ static int done_exec ( int argc, char **argv ) {
 		return 1;
 	}
 	
-	if ( COUNT ( loop_stack ) < 0 ) {
+	if ( stack_size ( &loop_stack ) <= 0 ) {
 		printf ( "done outside a loop\n" );
 		return 1;
 	}
-	POP_STACK ( loop_stack, for_info );
+	for_info = * ( struct while_info * ) stack_top ( &loop_stack );
+	stack_pop ( &loop_stack );
 	if ( pop_if ( &cond ) )
 		return 1;
 	if ( for_info.is_catch ) {
@@ -209,9 +229,6 @@ static int done_exec ( int argc, char **argv ) {
 		cur_len = start_len = for_info.loop_start;
 	} else
 		for_info.cur_arg = 0;
-	DBG ( "exited loop. stack size = %d\n",
-		COUNT ( loop_stack ) + 1 );
-
 	return rc;
 }
 
@@ -231,12 +248,12 @@ static int break_exec ( int argc, char **argv ) {
 		printf ( "Usage: %s\n", argv[0] );
 		return 1;
 	}
-	if ( COUNT ( loop_stack ) < 0 ) {
+	if ( stack_size ( &loop_stack ) <= 0 ) {
 		printf ( "%s outside loop\n", argv[0] );
 	}
-	start = loop_stack[COUNT ( loop_stack )].if_pos;
-	for ( pos = start; pos <= COUNT ( if_stack ); pos++ )
-		if_stack[pos] = 0;
+	start = ( ( struct while_info * ) stack_top ( &loop_stack ) )->if_pos;
+	for ( pos = start; pos < stack_size ( &if_stack ); pos++ )
+		*element_at ( &if_stack, int, pos ) = 0;
 	return 0;
 }
 
@@ -254,7 +271,7 @@ static int continue_exec ( int argc, char **argv ) {
 	struct while_info *w;
 	if ( break_exec ( argc, argv ) )
 		return 1;
-	w = loop_stack + COUNT ( loop_stack );
+	w = stack_top ( &loop_stack );
 	w->is_continue = 1;
 	return 0;
 }
@@ -271,6 +288,8 @@ struct command continue_command __command = {
 static int for_exec ( int argc, char **argv ) {
 	int cond;
 	int rc = 0;
+	struct while_info *loop_pos;
+	
 	if ( argc < 3 ) {
 		printf ( "Usage: for <var> in <list>\n" );
 		return 1;
@@ -282,18 +301,19 @@ static int for_exec ( int argc, char **argv ) {
 	for_info.cur_arg = 0 */
 	
 	for_info.is_continue = 0;
-	
-	cond = if_stack[COUNT ( if_stack ) ]
-		&& ( argc > for_info.cur_arg );
+		
+	cond = * ( int * ) stack_top ( &if_stack ) && ( argc > for_info.cur_arg );
 	
 	if ( ( rc = push_if ( cond ) ) == 0 ) {
-		for_info.if_pos = COUNT ( if_stack );
+		for_info.if_pos = stack_size ( &if_stack ) - 1;
 		DBG ( "setting %s to %s\n", argv[1], argv[for_info.cur_arg] );
 		if ( ( rc = storef_named_setting ( argv[1],
 				argv[for_info.cur_arg] ) ) == 0 ) {
-					
-			PUSH_STACK ( loop_stack, for_info );
-			rc = ( loop_stack == NULL );
+			
+			loop_pos = stack_push ( &loop_stack, struct while_info );
+			if ( loop_pos )
+				*loop_pos = for_info;
+			rc = ( loop_pos == NULL );
 		}
 	}
 	for_info.cur_arg = 0;
@@ -338,9 +358,8 @@ static int try_exec ( int argc, char **argv ) {
 	}
 	asprintf ( &argv[1], "%d", 1 );
 	while_exec ( 2, argv );
-	loop_stack[ COUNT ( loop_stack )].is_catch = 1;
-	else_stack[ COUNT ( else_stack )] = 0;
-	DBG ( "COUNT ( loop_stack ) = %d\n", COUNT ( loop_stack ) );
+	( ( struct while_info * ) stack_top ( &loop_stack ) )->is_catch = 1;
+	* ( int * ) stack_top ( &else_stack ) = 0;
 	in_try++;
 	return 0;
 }
@@ -360,7 +379,7 @@ static int catch_exec ( int argc, char **argv ) {
 	if ( else_exec ( argc, argv ) )
 		return 1;
 	in_try--;
-	loop_stack[ COUNT ( loop_stack )].is_continue = 0;
+	( ( struct while_info * ) stack_top ( &loop_stack ) )->is_continue = 0;
 	return 0;
 }
 
@@ -381,17 +400,20 @@ void store_rc ( int rc ) {
 
 void test_try ( int rc ) {
 	int i;
+	struct stack_element *element;
 	if ( rc && in_try > 0 ) {
 		/* Failed statement inside try block */
 		DBG ( "Exiting try block\n" );
 		/* Unwinding */
-		for ( i = 0; i < COUNT ( loop_stack ); i++ )
-			if ( loop_stack[i].is_catch )
+		stack_for_each ( element, &loop_stack )
+		{
+			if ( ( ( struct while_info * )element->data )->is_catch )
 				break;
-		i = loop_stack[i].if_pos;
-		DBG ( "i = %d. COUNT ( loop_stack ) = %d\n",
-			i, COUNT ( if_stack ) );
-		for ( ; i <= COUNT ( if_stack ); i++ )
-			if_stack[i] = 0;
+		}
+		
+		i = ( ( struct while_info * )element->data )->if_pos;
+		
+		for ( ; i < stack_size ( &if_stack ); i++ )
+			* element_at ( &if_stack, int, i ) = 0;
 	}
 }

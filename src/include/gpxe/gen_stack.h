@@ -1,62 +1,107 @@
 #ifndef _GPXE_GEN_STACK_H
 #define _GPXE_GEN_STACK_H
 
-#include <ctype.h>
-#include <errno.h>
+#include <gpxe/list.h>
 
-/** Macro to define tos variable */
-#define COUNT( stack ) _##stack##_tos
+struct stack {
+	struct list_head list;
+};
 
-/** Define a stack of the given name, type and size */
-#define INIT_STACK( name, type, size ) \
-	typeof ( type ) name[size]; \
-	int COUNT ( name ) = -1;
+struct stack_element {
+	struct list_head list;
+	char data[0];
+};
 
-/** Define an extern stack with the given name, type and soze */
-#define EXTERN_INIT_STACK( name, type, size ) \
-	extern typeof ( type ) name[size]; \
-	extern int COUNT ( name ); 
+#define STACK( _name )							\
+	struct stack _name = { LIST_HEAD_INIT ( _name.list ) }
 
-/** Define a static stack with the given name, type and size */
-#define STATIC_INIT_STACK( name, type, size ) \
-	static typeof ( type ) name[size];	\
-	static int COUNT ( name ) = -1;
+/**
+ * Allocate memory on a stack
+ *
+ * @v stack	Pointer to the struct stack
+ * @v type	Type of data
+ *
+ * This just allocates memory on top of the stack for data of a given type,
+ * and returns a pointer to it. It is the caller's responsibility to check
+ * that the pointer is valid, and copy the actual data.
+ */
+#define stack_push( stack, type )					\
+	( type * ) stack_push_ ( stack, sizeof ( type ) )
 
-/** Push a value onto the stack */
-#define PUSH_STACK( stack, value ) do {				\
-		COUNT ( stack ) += 1;						\
-		stack[COUNT ( stack )] = value;				\
-} while ( 0 );
+/**
+ * Get a pointer to data at a given index in the stack
+ *
+ * @v stack	The stack
+ * @v type	Type of data
+ * @v pos	Index
+ */
+#define element_at( stack, type, pos )					\
+	( ( type * ) stack_data_element_at ( stack, pos ) )
+	
+#define element_at_top( stack, type )				\
+	( ( type * ) stack_top ( stack ) )
 
-/** Use strdup to allocate a string on the heap and push it onto he stack */
-#define PUSH_STACK_STRING( stack, value ) do {				\
-		COUNT ( stack ) += 1;						\
-		stack[COUNT ( stack )] = strdup ( value );		\
-} while ( 0 );
+/**
+ * Iterate over entries in a stack
+ *
+ * @v element	struct stack_element * to use as a loop counter
+ * @v stack	Pointer to struct stack
+ */
+#define stack_for_each( element, stack )				\
+	list_for_each_entry ( element, &( stack )->list, list )
 
-/** Pop a value off the stack */
-#define POP_STACK( stack, value ) do {				\
-	value = stack[COUNT ( stack )];					\
-	COUNT ( stack ) -= 1;							\
-} while ( 0 );
+/**
+ * Iterate over entries in a stack, safe against deletion of entries
+ *
+ * @v element	struct stack_element * to use as a loop counter
+ * @v temp	Another struct stack_element * for temporary storage
+ * @v stack	The struct stack *
+ */
+#define stack_for_each_safe( element, temp, stack )			\
+	list_for_each_entry_safe ( element, temp, &( stack )->list, list )
 
-#define DUP_STACK( array, stack, count ) do {				\
-	memcpy ( array, stack, ( COUNT ( stack ) + 1 ) * sizeof ( typeof ( stack[0] ) ) );	\
-	count = COUNT ( stack );	\
-} while ( 0 );
+/**
+ * Iterate over entries in a stack, starting from a given index
+ *
+ * @v element	struct stack_element * to use as a loop counter
+ * @v start	Index to start from
+ * @v stack	The struct stack *
+ */
+#define stack_each_from( element, start, stack )			\
+	for ( element = stack_element_at ( stack, start );		\
+		&element->list != &( stack )->list;			\
+		element = list_entry ( element->list.next,		\
+					struct stack_element,		\
+					list ) )
+/**
+ * Deallocate a stack
+ *
+ * @v stack	Pointer to the struct stack
+ */
+#define free_stack( stack ) do {					\
+		struct list_head *_list, *_temp;			\
+		struct stack_element *_element; 			\
+		stack_for_each_safe ( _element, _temp, stack )	\
+			free ( _element );				\
+	} while ( 0 )
 
-/** Empty the stack */
-#define FREE_STACK( stack ) do {						\
-	COUNT ( stack ) = -1;							\
-} while ( 0 );
+/**
+ * Deallocate a stack when all elements are struct strings
+ * @v stack	Pointer to the struct stack
+ */
+#define free_stack_string( stack ) do {					\
+	struct stack_element *_element, *_temp;				\
+	stack_for_each_safe ( _element, _temp, stack ) {		\
+		free_string ( ( struct string * ) _element->data );	\
+		free ( _element );					\
+	}								\
+} while ( 0 )
 
-/** Call free() on each element in the stack */
-#define FREE_STACK_STRING( stack ) do {				\
-	int i;											\
-	for ( i = 0; i <= COUNT ( stack ); i++ )				\
-		free ( stack[i] );							\
-	FREE_STACK ( stack );							\
-} while ( 0 );
+extern void * stack_push_ ( struct stack *stack, size_t data_len );
+extern void stack_pop ( struct stack *stack );
+extern void * stack_top ( struct stack *stack );
+extern void * stack_data_element_at ( struct stack *stack, int pos );
+extern int stack_size ( struct stack *stack );
+extern struct stack_element * stack_element_at ( struct stack *stack, int pos );
 
 #endif
-

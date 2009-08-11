@@ -5,195 +5,164 @@
 #include <stdlib.h>
 #include <gpxe/settings.h>
 
+/* Just to mark the current line as incomplete */
 int incomplete;
+static char * dollar_expand ( struct string *s, char *inp, int *success );
+static char * quotes_expand ( struct string *string, char *start,
+	int *success );
+static void delchar ( char *charp, int num_del );
+
+#define CHAR_TABLE_END { .token = 0, .parse_func = NULL }
 
 /* Table for arithmetic expressions */
-const struct char_table arith_table[22] = {
+const struct char_table arith_table[23] = {
 	{
 		.token = '\\',
-		.type = FUNC,
-		.next.parse_func = parse_escape
+		.parse_func = parse_escape
 	},
 	{
 		.token = '"',
-		.type = TABLE,
-		.next = {
-			.next_table = {
-				.ntable = dquote_table,
-				.len = 3
-			}
-		}
+		.parse_func = quotes_expand
 	},
 	{
 		.token = '$',
-		.type = FUNC,
-		.next.parse_func = dollar_expand
+		.parse_func = dollar_expand
 	},
 	{
 		.token = '\'',
-		.type = TABLE,
-		.next = {
-			.next_table = {
-				.ntable = squote_table,
-				.len = 1
-			}
-		}
+		.parse_func = quotes_expand
 	},
 	{
 		.token = ' ',
-		.type = ENDQUOTES
 	},
 	{
 		.token = '\t',
-		.type = ENDQUOTES
 	},
 	{
 		.token = '\n',
-		.type = ENDQUOTES
 	},
 	{
 		.token = '~',
-		.type = ENDTOK
 	},
 	{
 		.token = '!',
-		.type = ENDTOK
 	},
 	{
 		.token = '*',
-		.type = ENDTOK
 	},
 	{
 		.token = '/',
-		.type = ENDTOK
 	},
 	{
 		.token = '%',
-		.type = ENDTOK
 	},
 	{
 		.token = '+',
-		.type = ENDTOK
 	},
 	{
 		.token = '-',
-		.type = ENDTOK
 	},
 	{
 		.token = '<',
-		.type = ENDTOK
 	},
 	{
 		.token = '=',
-		.type = ENDTOK
 	},
 	{
 		.token = '>',
-		.type = ENDTOK
 	},
 	{
 		.token = '&',
-		.type = ENDTOK
 	},
 	{
 		.token = '|',
-		.type = ENDTOK
 	},
 	{
 		.token = '^',
-		.type = ENDTOK
 	},
 	{
 		.token = '(',
-		.type = ENDTOK
 	},
 	{
 		.token = ')',
-		.type = ENDTOK
-	}
+	},
+	CHAR_TABLE_END,
 };
 
-/* Table for parsing text in double-quotes */
-const struct char_table dquote_table[3] = {
+/** Table for parsing text in double-quotes */
+const struct char_table dquote_table[4] = {
 	{
 		.token = '"',
-		.type = ENDQUOTES
-	},
-	{
-		.token = '$', .type = FUNC,
-		.next.parse_func = dollar_expand
-	},
-	{
-		.token = '\\',
-		.type = FUNC,
-		.next.parse_func = parse_escape
-	}
-};
-
-/* Table to parse text in single-quotes */
-const struct char_table squote_table[1] = {
-	{
-		.token = '\'',
-		.type = ENDQUOTES
-	}
-};
-
-/* Table to start with */
-const struct char_table table[6] = {
-	{
-		.token = '\\',
-		.type = FUNC,
-		.next.parse_func = parse_escape
-	},
-	{
-		.token = '"',
-		.type = TABLE,
-		.next = {
-			.next_table = {
-				.ntable = dquote_table,
-				.len = 3
-			}
-		}
 	},
 	{
 		.token = '$',
-		.type = FUNC,
-		.next.parse_func = dollar_expand
+		.parse_func = dollar_expand
+	},
+	{
+		.token = '\\',
+		.parse_func = parse_escape
+	},
+	CHAR_TABLE_END
+};
+
+/** Table to parse text in single-quotes */
+const struct char_table squote_table[2] = {
+	{
+		.token = '\'',
+	},
+	CHAR_TABLE_END
+};
+
+/** Table to start with */
+const struct char_table toplevel_table[7] = {
+	{
+		.token = '\\',
+		.parse_func = parse_escape
+	},
+	{
+		.token = '"',
+		.parse_func = quotes_expand
+	},
+	{
+		.token = '$',
+		.parse_func = dollar_expand
 	},
 	{
 		.token = '\'',
-		.type = TABLE,
-		.next = {
-			.next_table = {
-				.ntable = squote_table,
-				.len = 1
-			}
-		}
+		.parse_func = quotes_expand
 	},
 	{
 		.token = ' ',
-		.type = ENDTOK
 	},
 	{
 		.token = '\t',
-		.type = ENDTOK
-	}
+	},
+	CHAR_TABLE_END
 };
 
-/* Table to parse text after a $ */
-const struct char_table dollar_table[2] = {
+/** Table to parse text after a $ */
+const struct char_table dollar_table[3] = {
 	{
 		.token = '}',
-		.type = ENDTOK
 	},
 	{
 		.token = '$',
-		.type = FUNC,
-		.next.parse_func = dollar_expand
+		.parse_func = dollar_expand
 	},
+	CHAR_TABLE_END
 };
 
-/** Function to combine a struct string with 2 char * */
+/**
+ * Combine a struct string with 2 char *
+ *
+ * @v string	Pointer to the struct string that is to be modified
+ * @v s2	First char *
+ * @v s3	Second char *
+ * @ret	string	Return the modified string
+ *
+ * The resultant string: string.s2.s3 (. represents concatenation) is
+ * malloc'd and a pointer (char *) is returned.
+ */
 char * string3cat ( struct string *s1, const char *s2,
 	const char *s3 ) {
 		
@@ -210,7 +179,15 @@ char * string3cat ( struct string *s1, const char *s2,
 	return s1->value;
 }
 
-/** Function to copy a char * into a struct string */
+/**
+ * Function to copy a char * into a struct string
+ *
+ * @v string	struct string to copy into
+ * @v s		char * to copy from
+ *
+ * Analogous to a strcpy. A copy of s is made on the heap, and string
+ * will contain a pointer to it.
+ */
 char * stringcpy ( struct string *s1, const char *s2 ) {
 	char *tmp = s1->value;
 	s1->value = strdup ( s2 );
@@ -218,7 +195,14 @@ char * stringcpy ( struct string *s1, const char *s2 ) {
 	return s1->value;
 }
 
-/** Function to concatenate a struct string and a char * */
+/**
+ * Function to concatenate a struct string and a char *
+ *
+ * @v string	struct string holds the first part, and will hold the result
+ * @v s		char * to concatenate
+ *
+ * Analogous to strcat.
+ */
 char * stringcat ( struct string *s1, const char *s2 ) {
 	char *tmp;
 	if ( !s1->value )
@@ -231,61 +215,105 @@ char * stringcat ( struct string *s1, const char *s2 ) {
 	return s1->value;
 }
 
-/** Free a struct string */
+/**
+ * Free a struct string
+ *
+ * @v string	struct string to be freed
+ *
+ * struct string contains a pointer to a char array on the heap. It needs
+ * to be freed after use.
+ */
 void free_string ( struct string *s ) {
 	free ( s->value );
 	s->value = NULL;
 }
 
-/** Expand the text following a $ */
-char * dollar_expand ( struct string *s, char *inp ) {
-	char *name;
-	int setting_len;
+/**
+ * Expand the text following a $
+ *
+ * @v string	Text to be expanded, as a struct string
+ * @v start	Points to the $
+ * @ret end	Pointer to character after the $ expansion
+ *
+ * This function takes in input as a struct string, and looks for a variable
+ * expansion. Note that recursive expansion is permitted. If the input is
+ * abc$<exp>xyz, at the end, string will hold abc<expanded>xyz.
+ */
+char * dollar_expand ( struct string *string, char *start, int *success ) {
 	int len;
 	char *end;
 	
-	len = inp - s->value;
+	len = start - string->value;
 
-	if ( inp[1] == '{' ) {
-		end = expand_string ( s, inp + 2, dollar_table,
-			2, 1 );
-		inp = s->value + len;
-		if ( end ) {
-			*inp = 0;
-			*end++ = 0;
-			name = inp + 2;
-			/* Determine setting length */
-			setting_len = fetchf_named_setting ( name, NULL, 0 );
-			if ( setting_len < 0 )
-				setting_len = 0; /* Treat error as empty setting */
+	if ( start[1] == '{' ) {
+		int s2;
+		end = expand_string ( string, start + 2, dollar_table, &s2 );
+		*success = *success || s2;
+		start = string->value + len;
+		if ( end && *end == '}' ) {
+			int setting_len;
+			char *name;
 			
+			*start = 0;
+			*end++ = 0;
+			name = start + 2;
+			/* Determine setting length */
+			setting_len = fetchf_named_setting ( name, NULL,
+				0 );
+			
+			if ( setting_len < 0 )
+				/* Treat error as empty setting */
+				setting_len = 0;
 			/* Read setting into buffer */
 			{
 				char expdollar[setting_len + 1];
 				expdollar[0] = '\0';
 				fetchf_named_setting ( name, expdollar,
-								setting_len + 1 );
-				if ( string3cat ( s, expdollar, end ) )
-					end = s->value + len + strlen ( expdollar );
+					setting_len + 1 );
+				if ( string3cat ( string, expdollar, end ) )
+					end = string->value + len
+						+ strlen ( expdollar );
 			}
+		} else {
+			end = NULL;
+			free_string ( string );
 		}
 		return end;
-	} else if ( inp[1] == '(' ) {
-		name = inp;
+	} else if ( start[1] == '(' ) {
 		{
-			end = parse_arith ( s, name );
+			end = parse_arith ( string, start );
 			return end;
 		}
 	}
-	/* Can't find { or (, so preserve the $ */
-	end = inp + 1;
+	/* Can't find { so preserve the $ */
+	end = start + 1;
 	return end;
 }
 
-/** Deal with an escape sequence */
-char * parse_escape ( struct string *s, char *input ) {
-	char *exp;
-	char *end;
+/**
+ * @v charp	Pointer to start of characters to remove
+ * @v num_del	Number of characters to remove
+ *
+ * Delete num_del characters, starting from charp
+ */
+static void delchar ( char *charp, int num_del ) {
+	if ( charp )
+		memmove ( charp, charp + num_del, strlen ( charp + num_del )
+			+ 1);
+}
+
+/**
+ * Deal with an escape sequence
+ *
+ * @v string	Input string
+ * @v start	Point to start from
+ * @ret end	Pointer to character after the escape
+ *
+ * Deal with a \.
+ * \ at the end of a line will remove end of line
+ * \<char> will remove the special meaning of <char>, if any
+ */
+char * parse_escape ( struct string *s, char *input, int *success ) {
 	
 	/* Found a \ at the end of the string => more input required */
 	if ( ! input[1] ) {
@@ -293,97 +321,88 @@ char * parse_escape ( struct string *s, char *input ) {
 		free_string ( s );
 		return NULL;
 	}
-	*input = 0;
-	end = input + 2;
 	if ( input[1] == '\n' ) {
 		/* For a \ at end of line, remove both \ and \n */
-		int len = input - s->value;
-		exp = stringcat ( s, end );
-		end = exp + len;
+		delchar ( input, 2 );
 	} else {
-		/* A \ removes the special meanig of any other character */
-		int len = input - s->value;
-		end = input + 1;
-		exp = stringcat ( s, end );
-		end = exp + len + 1;
+		/* A \ removes the special meaning of any other character */
+		delchar ( input, 1 );
+		input++;
+		*success = 1;
 	}
-	return end;
+	return input;
 }
 
-/* Return a pointer to the first unconsumed character */
-char * expand_string ( struct string *s, char *head,
-	const struct char_table *table, int tlen,
-	int in_quotes ) {
+char * quotes_expand ( struct string *string, char *start, int *success ) {
+	const struct char_table *table;
+	char delim;
 	
-	int i;
-	int cur_pos; /* s->value may be reallocated */
-
-	cur_pos = head - s->value;
-	
-	while ( s->value[cur_pos] ) {
-		const struct char_table * tline = NULL;
+	delim = *start;
+	switch ( delim ) {
+		case '"':
+			table = dquote_table;
+		break;
 		
-		for ( i = 0; i < tlen; i++ ) {
-			/* Look for current token in the list we have */
-			if ( table[i].token == s->value[cur_pos] ) {
-				tline = table + i;
-				break;
-			}
-		}
+		case '\'':
+			table = squote_table;
+		break;
 		
-		if ( ! tline ) { /* If not found, copy into output */
-			cur_pos++;
-		} else {
-			switch ( tline->type ) {
-				case ENDQUOTES:
-				/* End of input, where next char is to be discarded.
-				 * Used for ending ' or " */
-				s->value[cur_pos] = 0;
-				if ( ! stringcat ( s, s->value + cur_pos + 1 ) )
-					return NULL;
-				return s->value + cur_pos;
-				
-				case TABLE:
-				{
-				/* Recursive call. Probably found quotes */
-					char *tmp;
-
-					s->value[cur_pos] = 0;
-					/* Remove the current character and
-					 * call recursively */
-					if ( !stringcat ( s, s->value + cur_pos + 1 ) )
-						return NULL;
-					
-					tmp = expand_string ( s, s->value + cur_pos, tline->next.next_table.ntable, tline->next.next_table.len, 1 );
-					if ( ! tmp )
-						return NULL;
-					cur_pos = tmp - s->value;
-					break;
-				}
-				case FUNC: /* Call another function */
-					{
-						char *tmp;
-						if ( ! ( tmp = tline->next.parse_func
-							( s, s->value + cur_pos ) ) )
-							return NULL;
-						cur_pos = tmp - s->value;
-					}
-					break;
-					
-				case ENDTOK:
-					/* End of input, and we also want next
-					 * character */
-					return s->value + cur_pos;
-					break;
-			}
-		}
-		
+		default:
+			return NULL;
 	}
-	if ( in_quotes ) {
-		/* We haven't found the closing quotes */
+	
+	delchar ( start, 1 );	/* Remove the starting quotes */
+
+	start = expand_string ( string, start, table, success );
+	
+	if ( start && *start != delim ) {
 		incomplete = 1;
-		free_string ( s );
-		return NULL;
+		start = NULL;
+	}		
+	delchar ( start, 1 );	/* Remove the ending quotes */
+	
+	DBG ( "string = [%s]\n", string->value );
+	*success = 1;
+	return start;
+}
+
+/**
+ * Expand an input string
+ *
+ * @v string	Input as a struct string
+ * @v start	Point to start from
+ * @v table	Characters that have special meaning, and actions to take
+ * @v success	Have we expanded anything?
+ * @ret end	Pointer to first unconsumed character
+ *
+ * This is the main parsing function. The table contains a list of meaningful
+ * characters, and the actions to be performed. The actions may be call a
+ * function, or return a pointer to current character.
+ */
+char * expand_string ( struct string *string, char *start,
+	const struct char_table *table, int *success ) {
+
+	*success = 0;
+	while ( 1 ) {
+		const struct char_table * tline;
+		char ch = *start;
+		
+		for ( tline = table; tline->token != 0; tline++ ) {
+			/* Look for current token in the list we have */
+			if ( tline->token == ch )
+				break;
+		}
+		
+		if ( tline->token != ch ) { /* If not found, copy into output */
+			*success = 1;
+			start++;
+			continue;
+		}
+		
+		if ( tline->parse_func == NULL )
+			return start;
+		start = tline->parse_func ( string, start, success );
+		if ( !start )
+			return NULL;		
 	}
-	return s->value + cur_pos;
 }

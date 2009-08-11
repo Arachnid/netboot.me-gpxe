@@ -83,8 +83,8 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( if_stack[COUNT ( if_stack )] == 1
-				|| cmd->flags & 0x1 ) {
+			if ( ( *( int * ) stack_top ( &if_stack ) == 1 )
+				|| ( cmd->flags & 0x1 ) ) {
 				
 				rc = cmd->exec ( argc, ( char ** ) argv );
 				if ( ! ( cmd->flags & 0x1 ) ) {
@@ -101,12 +101,11 @@ int execv ( const char *command, char * const argv[] ) {
 
 /** Expand a given command line and separate it into arguments */
 static int expand_command ( const char *command,
-	char **argv_stack, int *argv_count ) {
-	
+	struct stack *argv_stack ) {
+
 	char *head, *end;
+	int success;
 	int argc;
-	
-	INIT_STACK ( temp_stack, char *, MAX_ARGC );
 	struct string expcmd = { .value = NULL };
 	
 	argc = 0;
@@ -120,7 +119,6 @@ static int expand_command ( const char *command,
 	/* Go through the command line and expand */
 	while ( *head ) {
 		while ( isspace ( *head ) ) { /* Ignore leading spaces */
-			*head = 0;
 			head++;
 		}
 		if ( *head == '#' ) {
@@ -132,33 +130,42 @@ static int expand_command ( const char *command,
 			break;
 		}
 		head = expcmd.value;
-		end = expand_string ( &expcmd, head, table,
-			6, 0 );
-		
+		end = expand_string ( &expcmd, head, toplevel_table, &success );
+
 		if ( end ) {
-			char *argv = expcmd.value;
-			argc++;
-			expcmd.value = NULL;
-			PUSH_STACK ( temp_stack, argv );
-			if ( !stringcpy ( &expcmd, end ) ) {
-				DBG ( "out of memory while pushing: %s\n", argv );
-				argc = -ENOMEM;
-				break;
+			if ( success ) {
+				struct string *cur = NULL;
+				argc++;
+				
+				cur = stack_push ( argv_stack, struct string );
+				if ( cur ) {
+					cur->value = expcmd.value;
+					expcmd.value = NULL;
+					if ( !stringcpy ( &expcmd, end ) ) {
+						DBG ( "out of memory while "
+						"pushing: %s\n", end );
+						argc = -ENOMEM;
+						break;
+					}
+					*end = 0;
+					DBG ( "[%s]\n", cur->value );
+					/*
+					So if the command is: word1 word2 word3
+					argv_stack:	word1\0word2 word3
+								word2\0word3
+								word3
+					*/
+				} else {
+					argc = -ENOMEM;
+					break;
+				}
 			}
-			*end = 0;
-			/*
-			So if the command is: word1 word2 word3
-			argv_stack:	word1\0word2 word3
-						word2\0word3
-						word3
-			*/
 		} else {
 			argc = -ENOMEM;
 			break;
 		}
 		head = expcmd.value;
 	}
-	DUP_STACK ( argv_stack, temp_stack, *argv_count );
 	free_string ( &expcmd );
 	return argc;
 }
@@ -172,44 +179,43 @@ static int expand_command ( const char *command,
  * Execute the named command and arguments.
  */
 int system ( const char *command ) {
-	int argc;
+	int argc = 0;
 	int rc = 0;
-	static char *complete_command;
-	INIT_STACK ( argv_stack, char *, MAX_ARGC );
+	static struct string complete_command;
+	struct stack_element *element;
 	
-	if ( !incomplete ) {
-		start_len = cur_len;
-		complete_command = strdup ( command );
-	} else {
-		char *tmp = complete_command;
-		asprintf ( &complete_command, "%s\n%s",
-			complete_command, command );
-		free ( tmp );
-	}
+	STACK ( argv_stack );
+		
+	string3cat ( &complete_command, "\n", command );
 	incomplete = 0;
-	if ( !complete_command ) {
+	if ( !complete_command.value ) {
 		return -ENOMEM;
 	}
-	
-	DBG ( "command = [%s]\n", complete_command );
-	
-	argc = expand_command ( complete_command, argv_stack,
-		&COUNT ( argv_stack ) );
+
+	DBG ( "command = [%s]\n", complete_command.value );
+
+	argc = expand_command ( complete_command.value, &argv_stack );
+	DBG ( "argc = %d\n", argc );
 	
 	if ( !incomplete ) {
-		free ( complete_command );
-		complete_command = NULL;
-		if ( argc < 0 ) {
+		free_string ( &complete_command );
+		if ( argc <= 0 ) {
 			rc = argc;
-		} else {		
-			PUSH_STACK ( argv_stack, NULL );
-			if ( argc > 0 ) {
-				rc = execv ( argv_stack[0], argv_stack );
-				test_try ( rc );
+		} else {
+			char *argv[argc + 1];
+			int i = 0;
+			
+			stack_for_each ( element, &argv_stack ) {
+				argv[i++] = ( ( struct string * )
+						element->data )->value;
+				DBG ( "argv[%d] = [%s]\n", i - 1, argv[i - 1] );
 			}
+			argv[i] = NULL;
+			rc = execv ( argv[0], argv );
+			test_try ( rc );
 		}
 	}
-	FREE_STACK_STRING ( argv_stack );
+	free_stack_string ( &argv_stack );
 	return rc;
 }
 

@@ -5,7 +5,7 @@
 
 #define IF_SIZE 10
 
-EXTERN_INIT_STACK ( if_stack, int, IF_SIZE );
+struct stack if_stack;
 
 extern size_t start_len;
 extern size_t cur_len;

@@ -20,6 +20,7 @@
 #include <errno.h>
 
 #include <gpxe/parse.h>
+#include <gpxe/gen_stack.h>
 
 #define NUM_OPS 20
 #define MAX_PRIO 11
@@ -69,8 +70,10 @@ static signed const char op_prio[NUM_OPS] = {
 	10, 10, 9, 9, 9, 8, 8, 6, 6, 7, 6, 6, 7, 4, 3, 2, 1, 0, 5, 5
 };
 
+static STACK ( arith_stack );
+
 static void ignore_whitespace ( void );
-static int parse_expr ( char **buffer );
+static int parse_expr ( void );
 
 /**
  * Get the next token from the input
@@ -81,6 +84,7 @@ static void input ( void ) {
 	char *strtmp = NULL;
 	char *end;
 	long start;
+	int success;
 	
 	if ( tok < 0 )
 		return;
@@ -94,6 +98,9 @@ static void input ( void ) {
 		tok = -EINCOMPL;
 		return;
 	}
+	if ( tok == TOK_STRING )
+		free ( tok_value.str_value );
+	
 	tok = 0;
 	
 	if ( inp_ptr[0] == '(' || inp_ptr[0] == ')' ) {
@@ -123,9 +130,7 @@ static void input ( void ) {
 	}
 
 	start = inp_ptr - input_str->value;
-	end = expand_string ( input_str, inp_ptr, arith_table,
-		sizeof ( arith_table ) / sizeof ( arith_table[0] ),
-		1 );
+	end = expand_string ( input_str, inp_ptr, arith_table, &success );
 	
 	/* Either incomplete or out of memory */
 	if ( !end ) {
@@ -200,11 +205,9 @@ static void skip ( int ch ) {
 /**
  * Parse a number (or anything that can appear in place of a number).
  *
- * @v buffer		Pointer to store the number (as a string)
  * @ret err		Error encountered
  */
-static int parse_num ( char **buffer ) {
-	long num = 0;
+static int parse_num ( void ) {
 	int flag = 0;
 	
 	/* Look for a number: [+/-]expr */
@@ -215,56 +218,70 @@ static int parse_num ( char **buffer ) {
 			flag = 1;
 		else
 			accept ( TOK_PLUS );
-
+		
 		if ( accept ( '(' ) ) {
-			parse_expr ( buffer );
+			parse_expr ();
+		
 			if ( tok < 0 )	{
 				return ( tok );
 			}
 			skip ( ')' );
 			if ( tok < 0 )	{
-				free ( *buffer );
-				*buffer = NULL;
 				return ( tok );
 			}
+		
 			if ( flag ) {	/* Had found a - sign */
-				int t;
-				t = isnum ( *buffer, &num );
-				free ( *buffer );
-				*buffer = NULL;
-				if ( t == 0 )	/* Trying to do a -string */
+				long num;
+				struct string *s;
+				
+				s = element_at_top ( &arith_stack,
+					struct string );
+				
+				if ( !isnum ( s->value, &num ) )
+					/* Trying to do a -string */
 					tok = -EWRONGOP;
 				if ( tok < 0 )
 					return tok;
-				return ( ( asprintf ( buffer, "%ld", -num )  < 0 )
-					? ( tok = -ENOMEM ) : 0 );
+				
+				num = -num;
+				free_string ( s );
+				if ( asprintf ( &s->value, "%ld", num ) < 0 )
+					tok = -ENOMEM;
 			}
-			return 0;
+			return tok < 0 ? tok : 0;
 		}
 		
 		if ( tok == TOK_NUMBER ) {
-			if ( flag )
-				num = -tok_value.num_value;
-			else
-				num = tok_value.num_value;
+			struct string *s;
+			
+			s = stack_push ( &arith_stack, struct string );
+			if ( s ) {
+				if ( flag )
+					tok_value.num_value =
+						-tok_value.num_value;
+				if ( asprintf ( &s->value, "%ld",
+				 	tok_value.num_value ) < 0 )
+					tok = -ENOMEM;
+			}
+			if ( !s || !s->value )
+				tok = -ENOMEM;
 			input();
-			if ( tok < 0 )
-				return tok;
-			return ( ( asprintf ( buffer, "%ld", num ) < 0)
-				? ( tok = -ENOMEM ) : 0 );
+			return tok < 0 ? tok : 0;
 		}
 		/* Error if nothing found */
 		return ( tok = -EPARSE );
 	}
 	/* Look for a string instead */
 	if ( tok == TOK_STRING ) {
-		*buffer = tok_value.str_value;
+		struct string *s;
+		
+		s = stack_push ( &arith_stack, struct string );
+		if ( s ) {
+			s->value = tok_value.str_value;
+		} else
+			tok = -ENOMEM;
 		tok_value.str_value = NULL;
 		input();
-		if ( tok < 0 ) {
-			free ( *buffer );
-			*buffer = NULL;
-		}
 		return ( tok < 0 ) ? tok : 0;
 	}
 	/* If nothing found, it is an error */
@@ -277,10 +294,9 @@ static int parse_num ( char **buffer ) {
  * @v operator		The operator
  * @v operand1		LHS of expression (NULL for unary operators)
  * @v operand2		RHS of expression
- * @ret buffer		Result as a string
  * @ret err		Non-zero for errors
  */
-static int eval(int op, char *op1, char *op2, char **buffer) {
+int eval(int op, char *op1, char *op2, char **buffer) {
 	long value;
 	int bothints = 1;
 	long lhs, rhs;
@@ -382,9 +398,11 @@ static int eval(int op, char *op1, char *op2, char **buffer) {
  * @ret buffer		The result as a string
  * @ret err		Non-zero for errors
  */
-static int parse_prio(int prio, char **buffer) {
+static int parse_prio ( int prio ) {
 	int op;
-	char *lc, *rc;
+	char *rc;
+	char *buffer;
+	struct string *lc;
 	
 	lc = NULL;
 	if ( tok < 0 ) {
@@ -393,29 +411,25 @@ static int parse_prio(int prio, char **buffer) {
 	/* Check for a non-operator or something that starts a number */
 	if ( tok < MIN_TOK || tok == TOK_MINUS
 		|| tok == TOK_PLUS ) {
-		parse_num ( &lc );
+		parse_num ( );
 	} else if ( tok < MIN_TOK + 2 ) { /* A unary operator */
+		lc = stack_push ( &arith_stack, struct string );
+		if ( lc ) {
+			lc->value = NULL;
+		} else
+			tok = -ENOMEM;
 	} else {
 			if ( tok == TOK_STRING )
 				free ( tok_value.str_value );
 			tok = -EPARSE;
-		}
-	
-	if ( tok < 0 ) {
-		free ( lc );
-		return tok;
 	}
+	
 	/* Do until end of input or a close paren */
 	while( tok >= 0 && tok != ')' ) {
-		if ( tok < MIN_TOK ) {
-			free(lc);
-			*buffer = NULL;
-			if ( tok == TOK_STRING ) {
-				free ( tok_value.str_value );
-				tok_value.str_value = NULL;
-			}
+		
+		if ( tok < MIN_TOK )
 			return ( tok = -EPARSE );
-		}
+		
 		/* Continue until an operator is found that:
 		 * If left-associative, it has priority <= prio
 		 * If right-associative, it has priority < prio
@@ -427,28 +441,26 @@ static int parse_prio(int prio, char **buffer) {
 		
 		op = tok;
 		input();
-		parse_prio ( op_prio[op - MIN_TOK], &rc );
+		parse_prio ( op_prio[op - MIN_TOK] );
 		
 		if ( tok < 0 )	{
-			DBG ( "freeing %s\n", lc );
-			free ( lc );
-			*buffer = NULL;
 			return tok;
 		}
+		rc = element_at_top ( &arith_stack, struct string )->value;
+		stack_pop ( &arith_stack );
+		lc = element_at_top ( &arith_stack, struct string );
+		
 		/* Evaluate the expression */
-		eval ( op - MIN_TOK, lc, rc, buffer );
+		eval ( op - MIN_TOK, lc->value, rc, &buffer );
+		free_string ( lc );
 		free ( rc );
-		free ( lc );
-		if ( tok < 0 )
-			return tok;
-		lc = *buffer;
+		lc->value = buffer;
  	}
-	*buffer = lc;
-	return 0;
+	return tok < 0 ? tok : 0;
 }
 
-static int parse_expr ( char **buffer ) {
-	return parse_prio ( -1, buffer );
+static int parse_expr ( void ) {
+	return parse_prio ( -1 );
 }
 
 /**
@@ -463,10 +475,11 @@ static int parse_expr ( char **buffer ) {
  * evaluated expression in place of the input expression.
  */
 char * parse_arith ( struct string *inp, char *orig ) {
-	char *buffer = NULL;
-	int start;
+	long start;
 	char *end = NULL;
 	
+	arith_stack.list.next = &arith_stack.list;
+	arith_stack.list.prev = &arith_stack.list;
 	start = orig - inp->value;
 	
 	input_str = inp;
@@ -475,23 +488,23 @@ char * parse_arith ( struct string *inp, char *orig ) {
 	
 	input();
 	skip ( '(' );
-	parse_expr ( &buffer );
+	parse_expr ();
 	if ( tok >= 0 ) {
 		if ( tok != ')' ) {
 			tok = -EPARSE;
 		} else {
+			struct string *s;
+			
 			orig = inp->value + start;
 			*orig = 0;
 			end = inp_ptr;
-			orig = string3cat ( inp, buffer, end );
-			end = orig + start + strlen ( buffer );
+			s = element_at_top ( &arith_stack, struct string );
+			orig = string3cat ( inp, s->value, end );
+			end = orig + start + strlen ( s->value );
 		}
 	}
-	free ( buffer );
+	free_stack_string ( &arith_stack );
 	if ( tok < 0 )	{
-		
-		if ( tok == TOK_STRING )
-			free ( tok_value.str_value );
 		switch ( tok ) {
 			case -EPARSE:
 				printf ( "parse error\n" );
@@ -512,8 +525,7 @@ char * parse_arith ( struct string *inp, char *orig ) {
 				break;
 		}
 		free_string ( inp );
-		return end;
+		return NULL;
 	}
-	
 	return end;
 }
