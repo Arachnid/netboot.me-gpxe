@@ -39,8 +39,6 @@ FILE_LICENCE ( GPL2_OR_LATER );
  *
  */
 
-#define MAX_ARGC 68
-
 /* Avoid dragging in getopt.o unless a command really uses it */
 int optind;
 int nextchar;
@@ -83,9 +81,12 @@ int execv ( const char *command, char * const argv[] ) {
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
 		if ( strcmp ( command, cmd->name ) == 0 ) {
-			if ( ( *( int * ) stack_top ( &if_stack ) == 1 )
+			DBG ( "if: %d\n", *element_at_top ( &if_stack, int ) );
+			DBG ( "cmd->flags: %d\n", cmd->flags );
+			if ( ( *element_at_top ( &if_stack, int ) == 1 )
 				|| ( cmd->flags & 0x1 ) ) {
-				
+			
+				DBG ( "Executing command: %s\n", command );
 				rc = cmd->exec ( argc, ( char ** ) argv );
 				if ( ! ( cmd->flags & 0x1 ) ) {
 					store_rc ( rc );
@@ -100,9 +101,7 @@ int execv ( const char *command, char * const argv[] ) {
 }
 
 /** Expand a given command line and separate it into arguments */
-static int expand_command ( const char *command,
-	struct stack *argv_stack ) {
-
+static int expand_command ( const char *command, struct stack *argv_stack ) {
 	char *head, *end;
 	int success;
 	int argc;
@@ -185,7 +184,6 @@ int system ( const char *command ) {
 	struct stack_element *element;
 	
 	STACK ( argv_stack );
-		
 	string3cat ( &complete_command, "\n", command );
 	incomplete = 0;
 	if ( !complete_command.value ) {

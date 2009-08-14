@@ -5,7 +5,7 @@
 
 #define IF_SIZE 10
 
-struct stack if_stack;
+EXTERN_STACK ( if_stack );
 
 extern size_t start_len;
 extern size_t cur_len;

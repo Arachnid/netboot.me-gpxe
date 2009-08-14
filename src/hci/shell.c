@@ -115,6 +115,8 @@ void shell ( void ) {
 		}
 		if ( line ) {
 			cur_len = offset;
+			if ( !incomplete )
+				start_len = cur_len;
 			DBG ( "executing %d:[%s]\n", offset, line );
 			system ( line );
 			if ( cur_len == offset || command_source != 0 )

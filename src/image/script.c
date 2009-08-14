@@ -76,6 +76,8 @@ static int script_exec ( struct image *image ) {
 			copy_from_user ( cmdbuf, image->data, offset, len );
 			cmdbuf[len] = '\0';
 			cur_len = offset;
+			if ( !incomplete )
+				start_len = cur_len;
 			DBG ( "$ %s\n", cmdbuf );
 			if ( ( rc = system ( cmdbuf ) ) && ! this_allow ) {
 				DBG ( "Command \"%s\" failed: %s\n",

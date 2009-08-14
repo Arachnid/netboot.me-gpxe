@@ -11,10 +11,22 @@ struct stack_element {
 	struct list_head list;
 	char data[0];
 };
+/**
+ * Get a pointer to the data in the struct stack_element
+ *
+ * @v element	Pointer to the struct stack_element
+ * @v type	Type of the data
+ * @ret data	Pointer to the data, typecast to the correct type
+ */
+#define element_data( element, type )					\
+	( ( type * ) element->data )
 
 #define STACK( _name )							\
 	struct stack _name = { LIST_HEAD_INIT ( _name.list ) }
+#define EXTERN_STACK( _name )						\
+	extern struct stack _name;
 
+extern void * stack_push_ ( struct stack *stack, size_t data_len );
 /**
  * Allocate memory on a stack
  *
@@ -26,8 +38,27 @@ struct stack_element {
  * that the pointer is valid, and copy the actual data.
  */
 #define stack_push( stack, type )					\
-	( type * ) stack_push_ ( stack, sizeof ( type ) )
+	( ( type * ) stack_push_ ( stack, sizeof ( type ) ) )
 
+extern void * stack_top ( struct stack *stack );
+/**
+ * Get a pointer to the element at the top of the stack
+ *
+ * @v stack	Pointer to the struct stack
+ * @v type	Type of data
+ */
+#define element_at_top( stack, type )					\
+	( ( type * ) stack_top ( stack ) )
+
+/**
+ * Remove the topmost entry in the stack
+ *
+ * @v stack	Pointer to the struct stack
+ */
+extern void stack_pop ( struct stack *stack );
+
+extern struct stack_element * stack_element_at ( struct stack *stack, int pos );
+extern void * stack_data_element_at ( struct stack *stack, int pos );
 /**
  * Get a pointer to data at a given index in the stack
  *
@@ -37,9 +68,13 @@ struct stack_element {
  */
 #define element_at( stack, type, pos )					\
 	( ( type * ) stack_data_element_at ( stack, pos ) )
-	
-#define element_at_top( stack, type )				\
-	( ( type * ) stack_top ( stack ) )
+
+/**
+ * Get number of elements on the stack
+ *
+ * @v stack	Pointer to the struct stack
+ */
+extern int stack_size ( struct stack *stack );
 
 /**
  * Iterate over entries in a stack
@@ -79,11 +114,11 @@ struct stack_element {
  * @v stack	Pointer to the struct stack
  */
 #define free_stack( stack ) do {					\
-		struct list_head *_list, *_temp;			\
-		struct stack_element *_element; 			\
-		stack_for_each_safe ( _element, _temp, stack )	\
-			free ( _element );				\
-	} while ( 0 )
+	struct stack_element *_element, *_temp;				\
+	stack_for_each_safe ( _element, _temp, stack ) {		\
+		free ( _element );					\
+	}								\
+} while ( 0 )
 
 /**
  * Deallocate a stack when all elements are struct strings
@@ -96,12 +131,5 @@ struct stack_element {
 		free ( _element );					\
 	}								\
 } while ( 0 )
-
-extern void * stack_push_ ( struct stack *stack, size_t data_len );
-extern void stack_pop ( struct stack *stack );
-extern void * stack_top ( struct stack *stack );
-extern void * stack_data_element_at ( struct stack *stack, int pos );
-extern int stack_size ( struct stack *stack );
-extern struct stack_element * stack_element_at ( struct stack *stack, int pos );
 
 #endif
