@@ -1,0 +1,3 @@
+#!gpxe
+autoboot
+chain http://www.netboot.me/gpxe
