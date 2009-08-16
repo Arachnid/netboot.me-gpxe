@@ -17,8 +17,7 @@ static int autoboot_exec ( int argc, char **argv ) {
 
 	autoboot();
 
-	/* Can never return success by definition */
-	return 1;
+	return 0;
 }
 
 struct command autoboot_command __command = {
