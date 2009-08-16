@@ -85,6 +85,8 @@ NON_AUTO_SRCS	+= drivers/net/prism2.c
 INCDIRS		:=
 INCDIRS		+= include .
 
+EMBEDDED_IMAGE ?= ../contrib/scripts/netbootme.gpxe
+
 ###############################################################################
 #
 # Default build target: build the most common targets and print out a
