@@ -201,14 +201,14 @@ int system ( const char *command ) {
 			rc = argc;
 		} else {
 			char *argv[argc + 1];
-			int i = 0;
+			int i = argc;
 			
 			stack_for_each ( element, &argv_stack ) {
-				argv[i++] = ( ( struct string * )
+				argv[--i] = ( ( struct string * )
 						element->data )->value;
-				DBG ( "argv[%d] = [%s]\n", i - 1, argv[i - 1] );
+				DBG ( "argv[%d] = [%s]\n", i, argv[i] );
 			}
-			argv[i] = NULL;
+			argv[argc] = NULL;
 			rc = execv ( argv[0], argv );
 			test_try ( rc );
 		}

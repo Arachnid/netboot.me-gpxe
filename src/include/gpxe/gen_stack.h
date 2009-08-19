@@ -23,8 +23,6 @@ struct stack_element {
 
 #define STACK( _name )							\
 	struct stack _name = { LIST_HEAD_INIT ( _name.list ) }
-#define EXTERN_STACK( _name )						\
-	extern struct stack _name;
 
 extern void * stack_push_ ( struct stack *stack, size_t data_len );
 /**

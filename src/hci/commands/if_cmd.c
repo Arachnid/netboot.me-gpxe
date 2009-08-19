@@ -138,7 +138,7 @@ static int else_exec ( int argc, char **argv ) {
 	}
 	*element_at_top ( &else_stack, int ) = 1;
 	
-	if ( *element_at ( &if_stack, int, stack_size ( &if_stack ) - 2 ) )
+	if ( *element_at ( &if_stack, int, 1 ) )
 		*element_at_top ( &if_stack, int ) = ! * element_at_top ( &if_stack, int );
 	
 	return 0;
