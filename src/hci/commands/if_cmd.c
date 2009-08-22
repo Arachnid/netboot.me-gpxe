@@ -68,6 +68,7 @@ static int pop_if ( int *cond ) {
 		stack_pop ( &else_stack );
 		return 0;
 	}
+	DBG ( "Popping an empty if stack\n");
 	return 1;
 }
 
@@ -107,9 +108,10 @@ static int fi_exec ( int argc, char **argv ) {
 	}
 	if_size = stack_size ( &if_stack );
 	loop_size = stack_size ( &loop_stack );
-	/* if this is not a loop */	
-	if ( loop_size == 0 ||
-		( element_at_top ( &loop_stack, struct while_info ) )->if_pos != if_size - 1 )
+	DBG ( "if size = %d. loop stack = %d\n", if_size, loop_size );
+	/* if this is not a loop */
+	if ( ( if_size > 1 ) && ( loop_size == 0 ||
+		( element_at_top ( &loop_stack, struct while_info ) )->if_pos != if_size ) )
 		return pop_if ( NULL );
 	printf ( "fi without if\n" );
 	return 1;
@@ -168,7 +170,7 @@ void init_if ( void ) {
 			stack_pop ( &if_stack );
 		else
 			*else_pos = 0;
-	}		
+	}
 	for_info.cur_arg = 0;
 	return;
 }
@@ -188,12 +190,12 @@ static int while_exec ( int argc, char **argv ) {
 	}
 	if ( if_exec ( argc, argv ) != 0 )
 		return 1;
+	DBG ( "%s %s\n", argv[0], argv[1] );
 	*element_at_top ( &else_stack, int ) = 1;
-	
 	w_pos = stack_push ( &loop_stack, struct while_info );
 	if ( w_pos ) {
 		w_pos->loop_start = start_len;
-		w_pos->if_pos = stack_size ( &if_stack ) - 1;
+		w_pos->if_pos = stack_size ( &if_stack );
 		w_pos->is_continue = 0;
 		w_pos->cur_arg = 0;
 		w_pos->is_catch = 0;
@@ -224,15 +226,18 @@ static int done_exec ( int argc, char **argv ) {
 		printf ( "done outside a loop\n" );
 		return 1;
 	}
-	for_info = * element_at_top ( &loop_stack, struct while_info );
+	for_info = *element_at_top ( &loop_stack, struct while_info );
 	stack_pop ( &loop_stack );
+
 	if ( pop_if ( &cond ) )
 		return 1;
-	if ( for_info.is_catch ) {
+
+	if ( for_info.is_catch )
 		cond = 0;
-	}
+
 	if ( cond || for_info.is_continue ) {
 		cur_len = start_len = for_info.loop_start;
+		DBG ( "Next iteration\n" );
 	} else
 		for_info.cur_arg = 0;
 	return rc;
@@ -245,23 +250,61 @@ struct command done_command __command = {
 	.flags = 1,
 };
 
+static int debug_exec ( int argc, char **argv ) {
+	struct stack_element *element;
+
+	argc = 1;
+	printf ( "Asked for %s\n", argv[0] );
+
+	printf ( "loop size: %d\n", stack_size ( &loop_stack ) );
+	stack_for_each ( element, &loop_stack ) {
+		printf ( "(%d:%d) ", element_data ( element, struct while_info )->if_pos,
+			element_data ( element, struct while_info )->is_continue );
+	}
+	printf ( "\n" );
+
+	printf ( "if size: %d\n", stack_size ( &if_stack ) );
+	stack_for_each ( element, &if_stack ) {
+		printf ( "%d: ", *element_data ( element, int ) );
+	}
+	printf ( "\n" );
+
+	return 0;
+}
+
+struct command debug_command __command = {
+	.name = "debug",
+	.exec = debug_exec,
+	.flags = 1,
+};
+
 /** The "break" command
  */
-static int break_exec ( int argc, char **argv ) {
-	int start;
-	struct stack_element *element;
+static int break_exec ( int argc, char ** argv ) {
+	int last;
+	int size;
+	int *top;
+
 	if ( argc != 1 ) {
 		printf ( "Usage: %s\n", argv[0] );
 		return 1;
 	}
-	if ( stack_size ( &loop_stack ) <= 0 ) {
+
+	size = stack_size ( &if_stack );
+	if ( size <= 0 )
 		printf ( "%s outside loop\n", argv[0] );
+
+	last = element_at_top ( &loop_stack, struct while_info )->if_pos;
+
+	while ( stack_size ( &if_stack ) >= last ) {
+		stack_pop ( &if_stack );
 	}
-	start = element_at_top ( &loop_stack, struct while_info )->if_pos;
-	
-	/* Exit all the if branches above this one */
-	stack_each_from ( element, start, &if_stack )
-		* element_data ( element, int ) = 0;
+	while ( stack_size ( &if_stack ) < size ) {
+		top = stack_push ( &if_stack, int );
+		if ( top )
+			*top = 0;
+	}
+	DBG ( "Old size: %d. New size: %d\n", size, stack_size ( &if_stack ) );
 	return 0;
 }
 
@@ -275,10 +318,22 @@ struct command break_command __command = {
 /**
  * The "continue" command
  */
+#if 0
 static int continue_exec ( int argc, char **argv ) {
 	struct while_info *w;
 	if ( break_exec ( argc, argv ) )
 		return 1;
+	w = element_at_top ( &loop_stack, struct while_info );
+	w->is_continue = 1;
+	return 0;
+}
+#endif
+static int continue_exec ( int argc, char **argv ) {
+	struct while_info *w;
+
+	if ( break_exec ( argc, argv ) )
+		return 1;
+
 	w = element_at_top ( &loop_stack, struct while_info );
 	w->is_continue = 1;
 	return 0;
@@ -288,6 +343,7 @@ static int continue_exec ( int argc, char **argv ) {
 struct command continue_command __command = {
 	.name = "continue",
 	.exec = continue_exec,
+	.flags = 0,
 };
 
 /**
@@ -313,7 +369,7 @@ static int for_exec ( int argc, char **argv ) {
 	cond = ( *element_at_top ( &if_stack, int ) ) && ( argc > for_info.cur_arg );
 	
 	if ( ( rc = push_if ( cond ) ) == 0 ) {
-		for_info.if_pos = stack_size ( &if_stack ) - 1;
+		for_info.if_pos = stack_size ( &if_stack );
 		DBG ( "setting %s to %s\n", argv[1], argv[for_info.cur_arg] );
 		if ( ( rc = storef_named_setting ( argv[1],
 				argv[for_info.cur_arg] ) ) == 0 ) {

@@ -11,6 +11,7 @@ struct stack_element {
 	struct list_head list;
 	char data[0];
 };
+
 /**
  * Get a pointer to the data in the struct stack_element
  *
@@ -116,6 +117,7 @@ extern int stack_size ( struct stack *stack );
 	stack_for_each_safe ( _element, _temp, stack ) {		\
 		free ( _element );					\
 	}								\
+	( stack )->list.next = ( stack )->list.prev = &( stack )->list;	\
 } while ( 0 )
 
 /**
@@ -128,6 +130,7 @@ extern int stack_size ( struct stack *stack );
 		free_string ( ( struct string * ) _element->data );	\
 		free ( _element );					\
 	}								\
+	( stack )->list.next = ( stack )->list.prev = &( stack )->list;	\
 } while ( 0 )
 
 #endif
