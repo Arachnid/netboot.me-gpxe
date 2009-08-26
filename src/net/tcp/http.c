@@ -458,7 +458,7 @@ static void http_step ( struct process *process ) {
 		/* Send GET request */
 		if ( ( rc = xfer_printf ( &http->socket,
 					  "GET %s%s%s HTTP/1.0\r\n"
-					  "User-Agent: gPXE/" VERSION "\r\n"
+					  "User-Agent: gPXE/" VERSION " (netboot.me/" NETBOOTME_VERSION ")\r\n"
 					  "%s%s%s"
 					  "Host: %s\r\n"
 					  "\r\n",
