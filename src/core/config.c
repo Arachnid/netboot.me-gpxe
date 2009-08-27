@@ -201,6 +201,9 @@ REQUIRE_OBJECT ( sanboot_cmd );
 #ifdef LOGIN_CMD
 REQUIRE_OBJECT ( login_cmd );
 #endif
+#ifdef INPUT_CMD
+REQUIRE_OBJECT ( input_cmd );
+#endif
 #ifdef TIME_CMD
 REQUIRE_OBJECT ( time_cmd );
 #endif

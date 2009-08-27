@@ -1,7 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <gpxe/command.h>
-#include <gpxe/login_ui.h>
+#include <gpxe/editbox.h>
+#include <gpxe/input_ui.h>
 
 FILE_LICENCE ( GPL2_OR_LATER );
 
@@ -14,9 +15,13 @@ static int login_exec ( int argc, char **argv ) {
 		return 1;
 	}
 
-	if ( ( rc = login_ui() ) != 0 ) {
-		printf ( "Could not set credentials: %s\n",
-			 strerror ( rc ) );
+	if ( ( rc = input_ui( "username", "Username:", 0 ) ) != 0 ) {
+		printf ( "Could not get username: %s\n", strerror ( rc ) );
+		return 1;
+	}
+
+	if ( ( rc = input_ui( "password", "Password:", EDITBOX_STARS ) )  != 0 ) {
+		printf ( "Could not get username: %s\n", strerror ( rc ) );
 		return 1;
 	}
 

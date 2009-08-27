@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2009 Michael Brown <mbrown@fensystems.co.uk>.
+ * Copyright (C) 2009 Michael Brown <mbrown@fensystems.co.uk>,
+ *                    Nick Johnson <arachnid@notdot.net>.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -20,7 +21,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 
 /** @file
  *
- * Login UI
+ * Input box UI
  *
  */
 
@@ -31,7 +32,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <gpxe/settings.h>
 #include <gpxe/editbox.h>
 #include <gpxe/keys.h>
-#include <gpxe/login_ui.h>
+#include <gpxe/input_ui.h>
 
 /* Colour pairs */
 #define CPAIR_NORMAL		1
@@ -39,28 +40,25 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #define CPAIR_EDITBOX		3
 
 /* Screen layout */
-#define USERNAME_LABEL_ROW	8
-#define USERNAME_ROW		10
-#define PASSWORD_LABEL_ROW	14
-#define PASSWORD_ROW		16
-#define LABEL_COL		36
+#define INPUT_LABEL_ROW	11
+#define INPUT_ROW		13
+#define LABEL_CENTER		40
 #define EDITBOX_COL		30
 #define EDITBOX_WIDTH		20
 
-int login_ui ( void ) {
-	char username[64];
-	char password[64];
-	struct edit_box username_box;
-	struct edit_box password_box;
-	struct edit_box *current_box = &username_box;
+int input_ui ( char *setting_name, char *prompt, unsigned int flags ) {
+	char input[256];
+	struct edit_box input_box;
 	int key;
 	int rc = -EINPROGRESS;
+	int label_col = LABEL_CENTER - strlen ( prompt ) / 2;
 
-	/* Fetch current setting values */
-	fetch_string_setting ( NULL, &username_setting, username,
-			       sizeof ( username ) );
-	fetch_string_setting ( NULL, &password_setting, password,
-			       sizeof ( password ) );
+	if ( label_col < 0 )
+		label_col = 0;
+
+	/* Fetch current setting value */
+	if ( fetchf_named_setting ( setting_name, input, sizeof ( input ) ) )
+		input[0] = '\0';
 
 	/* Initialise UI */
 	initscr();
@@ -68,51 +66,32 @@ int login_ui ( void ) {
 	init_pair ( CPAIR_NORMAL, COLOR_WHITE, COLOR_BLACK );
 	init_pair ( CPAIR_LABEL, COLOR_WHITE, COLOR_BLACK );
 	init_pair ( CPAIR_EDITBOX, COLOR_WHITE, COLOR_BLUE );
-	init_editbox ( &username_box, username, sizeof ( username ), NULL,
-		       USERNAME_ROW, EDITBOX_COL, EDITBOX_WIDTH, 0 );
-	init_editbox ( &password_box, password, sizeof ( password ), NULL,
-		       PASSWORD_ROW, EDITBOX_COL, EDITBOX_WIDTH,
-		       EDITBOX_STARS );
+	init_editbox ( &input_box, input, sizeof ( input ), NULL,
+								 INPUT_ROW, EDITBOX_COL, EDITBOX_WIDTH, flags );
 
 	/* Draw initial UI */
 	erase();
 	color_set ( CPAIR_LABEL, NULL );
-	mvprintw ( USERNAME_LABEL_ROW, LABEL_COL, "Username:" );
-	mvprintw ( PASSWORD_LABEL_ROW, LABEL_COL, "Password:" );
+	mvprintw ( INPUT_LABEL_ROW, label_col, prompt );
 	color_set ( CPAIR_EDITBOX, NULL );
-	draw_editbox ( &username_box );
-	draw_editbox ( &password_box );
+	draw_editbox ( &input_box );
 
 	/* Main loop */
 	while ( rc == -EINPROGRESS ) {
 
-		draw_editbox ( current_box );
+		draw_editbox ( &input_box );
 
 		key = getkey();
 		switch ( key ) {
-		case KEY_DOWN:
-			current_box = &password_box;
-			break;
-		case KEY_UP:
-			current_box = &username_box;
-			break;
-		case TAB:
-			current_box = ( ( current_box == &username_box ) ?
-					&password_box : &username_box );
-			break;
 		case KEY_ENTER:
-			if ( current_box == &username_box ) {
-				current_box = &password_box;
-			} else {
-				rc = 0;
-			}
+			rc = 0;
 			break;
 		case CTRL_C:
 		case ESC:
 			rc = -ECANCELED;
 			break;
 		default:
-			edit_editbox ( current_box, key );
+			edit_editbox ( &input_box, key );
 			break;
 		}
 	}
@@ -126,11 +105,7 @@ int login_ui ( void ) {
 		return rc;
 
 	/* Store settings */
-	if ( ( rc = store_setting ( NULL, &username_setting, username,
-				    strlen ( username ) ) ) != 0 )
-		return rc;
-	if ( ( rc = store_setting ( NULL, &password_setting, password,
-				    strlen ( password ) ) ) != 0 )
+	if ( ( rc = storef_named_setting ( setting_name, input ) ) != 0 )
 		return rc;
 
 	return 0;
