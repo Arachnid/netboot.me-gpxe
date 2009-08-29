@@ -22,9 +22,14 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 #include <gpxe/image.h>
 #include <gpxe/downloader.h>
-#include <gpxe/monojob.h>
+#include <gpxe/job.h>
+#include <gpxe/timer.h>
+#include <gpxe/keys.h>
+#include <console.h>
+#include <gpxe/process.h>
 #include <gpxe/open.h>
 #include <gpxe/uri.h>
 #include <usr/imgmgmt.h>
@@ -34,6 +39,77 @@ FILE_LICENCE ( GPL2_OR_LATER );
  * Image management
  *
  */
+
+static int imgfetch_rc;
+static unsigned long imgfetch_completed = 0, imgfetch_total = 0;
+
+static void imgfetch_done ( struct job_interface *job __unused, int rc ) {
+  imgfetch_rc = rc;
+}
+
+static void imgfetch_progress ( struct job_interface *job __unused,
+    struct job_progress *progress ) {
+  imgfetch_completed = progress->completed;
+  imgfetch_total = progress->total;
+}
+
+static struct job_interface_operations imgfetch_operations = {
+  .done = imgfetch_done,
+  .kill = ignore_job_kill,
+  .progress = imgfetch_progress,
+};
+
+struct job_interface imgfetch_job = {
+  .intf = {
+    .dest = &null_job.intf,
+    .refcnt = NULL,
+  },
+  .op = &imgfetch_operations,
+};
+
+int imgfetch_wait ( const char *string ) {
+  int key;
+  int rc;
+  unsigned long last_status;
+  unsigned long elapsed;
+  int backspaces = 0;
+
+  printf("Downloading %s: ", string);
+
+  imgfetch_rc = -EINPROGRESS;
+  last_status = currticks();
+  while (imgfetch_rc == -EINPROGRESS) {
+    step();
+    if ( iskey() ) {
+      key = getchar();
+      switch ( key ) {
+        case CTRL_C:
+          job_kill(&imgfetch_job);
+          rc = -ECANCELED;
+          goto done;
+        default:
+          break;
+      }
+    }
+    elapsed = ( currticks() - last_status );
+    if ( elapsed >= TICKS_PER_SEC ) {
+      while ( backspaces-- ) {
+        printf("\b");
+      }
+      backspaces = printf("%ld / %ld kB", (imgfetch_completed / 1024), (imgfetch_total / 1024));
+      last_status = currticks();
+    }
+  }
+  rc = imgfetch_rc;
+done:
+  job_done( &imgfetch_job, rc );
+  if ( rc ) {
+    printf( " %s\n", strerror( rc ) );
+  } else {
+    printf( " completed\n" );
+  }
+  return rc;
+}
 
 /**
  * Fetch an image
@@ -64,9 +140,11 @@ int imgfetch ( struct image *image, const char *uri_string,
 		      uri );
 	uri->password = password;
 
-	if ( ( rc = create_downloader ( &monojob, image, image_register,
-					LOCATION_URI, uri ) ) == 0 )
-		rc = monojob_wait ( uri_string_redacted );
+	if ( ( rc = create_downloader ( &imgfetch_job, image, image_register,
+					LOCATION_URI, uri ) ) == 0 ) {
+		imgfetch_job.op = &imgfetch_operations;
+		rc = imgfetch_wait ( uri_string_redacted );
+	}
 
 	uri_put ( uri );
 	return rc;
