@@ -168,6 +168,7 @@ static int downloader_xfer_deliver_iob ( struct xfer_interface *xfer,
 	size_t len;
 	size_t max;
 	int rc;
+	struct job_progress progress;
 
 	/* Calculate new buffer position */
 	if ( meta->whence != SEEK_CUR )
@@ -188,6 +189,9 @@ static int downloader_xfer_deliver_iob ( struct xfer_interface *xfer,
 	downloader->pos += len;
 
  done:
+	progress.completed = downloader->pos;
+	progress.total = downloader->image->len;
+	(downloader->job.op->progress)(&downloader->job, &progress);
 	free_iob ( iobuf );
 	return rc;
 }
