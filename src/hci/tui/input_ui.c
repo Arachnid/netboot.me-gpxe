@@ -57,7 +57,8 @@ int input_ui ( char *setting_name, char *prompt, unsigned int flags ) {
 		label_col = 0;
 
 	/* Fetch current setting value */
-	if ( fetchf_named_setting ( setting_name, input, sizeof ( input ) ) )
+	if ( fetchf_named_setting ( setting_name, input, sizeof ( input ) )
+		<= 0 )
 		input[0] = '\0';
 
 	/* Initialise UI */
@@ -67,7 +68,7 @@ int input_ui ( char *setting_name, char *prompt, unsigned int flags ) {
 	init_pair ( CPAIR_LABEL, COLOR_WHITE, COLOR_BLACK );
 	init_pair ( CPAIR_EDITBOX, COLOR_WHITE, COLOR_BLUE );
 	init_editbox ( &input_box, input, sizeof ( input ), NULL,
-								 INPUT_ROW, EDITBOX_COL, EDITBOX_WIDTH, flags );
+		       INPUT_ROW, EDITBOX_COL, EDITBOX_WIDTH, flags );
 
 	/* Draw initial UI */
 	erase();
