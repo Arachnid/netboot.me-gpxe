@@ -154,6 +154,7 @@ static int netboot ( struct net_device *netdev ) {
 	if ( ( rc = dhcp ( netdev ) ) != 0 )
 		return rc;
 	route();
+  return 0;
 
 	/* Try PXE menu boot, if applicable */
 	fetch_string_setting ( NULL, &vendor_class_id_setting,

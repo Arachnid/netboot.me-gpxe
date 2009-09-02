@@ -85,6 +85,8 @@ NON_AUTO_SRCS	+= drivers/net/prism2.c
 INCDIRS		:=
 INCDIRS		+= include .
 
+EMBEDDED_IMAGE ?= ../contrib/scripts/netbootme.gpxe
+
 ###############################################################################
 #
 # Default build target: build the most common targets and print out a
@@ -127,6 +129,11 @@ install :
 #
 # Version number calculations
 #
+NETBOOTME_VERSION_MAJOR = 0
+NETBOOTME_VERSION_MINOR = 1
+NETBOOTME_VERSION_PATCH = 1
+NETBOOTME_MM_VERSION = $(NETBOOTME_VERSION_MAJOR).$(NETBOOTME_VERSION_MINOR)
+NETBOOTME_VERSION = $(NETBOOTME_MM_VERSION).$(NETBOOTME_VERSION_PATCH)
 VERSION_MAJOR	= 0
 VERSION_MINOR	= 9
 VERSION_PATCH	= 7
@@ -136,7 +143,8 @@ VERSION		= $(MM_VERSION).$(VERSION_PATCH)$(EXTRAVERSION)
 CFLAGS		+= -DVERSION_MAJOR=$(VERSION_MAJOR) \
 		   -DVERSION_MINOR=$(VERSION_MINOR) \
 		   -DVERSION_PATCH=$(VERSION_PATCH) \
-		   -DVERSION=\"$(VERSION)\"
+		   -DVERSION=\"$(VERSION)\" \
+			 -DNETBOOTME_VERSION=\"$(NETBOOTME_VERSION)\"
 IDENT		= '$(@F) $(VERSION) (GPL) etherboot.org'
 version :
 	@$(ECHO) $(VERSION)
