@@ -112,9 +112,11 @@ static int sha1sum_exec ( int argc, char **argv ) {
 struct command md5sum_command __command = {
 	.name = "md5sum",
 	.exec = md5sum_exec,
+	.flags = 0,
 };
 
 struct command sha1sum_command __command = {
 	.name = "sha1sum",
 	.exec = sha1sum_exec,
+	.flags = 0,
 };

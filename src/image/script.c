@@ -30,9 +30,14 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <ctype.h>
 #include <errno.h>
 #include <gpxe/image.h>
+#include <gpxe/parse.h>
+#include <hci/if_cmd.h>
 
 struct image_type script_image_type __image_type ( PROBE_NORMAL );
 
+extern int command_source;
+static int allow_bad;
+size_t get_free_heap ( void );
 /**
  * Execute script
  *
@@ -44,14 +49,18 @@ static int script_exec ( struct image *image ) {
 	off_t eol;
 	size_t len;
 	int rc;
+	int this_allow = 0;
 
 	/* Temporarily de-register image, so that a "boot" command
 	 * doesn't throw us into an execution loop.
 	 */
 	unregister_image ( image );
-
+	/* Only one script can be executed at a time, so prevent stale loops from interfering */
+	//if ( command_source == 1 )
+	//	init_if ();
+	command_source = 1;
+	DBG ( "BEFORE: %i\n", get_free_heap () );
 	while ( offset < image->len ) {
-	
 		/* Find length of next line, excluding any terminating '\n' */
 		eol = memchr_user ( image->data, offset, '\n',
 				    ( image->len - offset ) );
@@ -62,23 +71,34 @@ static int script_exec ( struct image *image ) {
 		/* Copy line, terminate with NUL, and execute command */
 		{
 			char cmdbuf[ len + 1 ];
+			
 
 			copy_from_user ( cmdbuf, image->data, offset, len );
 			cmdbuf[len] = '\0';
+			cur_len = offset;
+			if ( !incomplete )
+				start_len = cur_len;
 			DBG ( "$ %s\n", cmdbuf );
-			if ( ( rc = system ( cmdbuf ) ) != 0 ) {
+			if ( ( rc = system ( cmdbuf ) ) && ! this_allow ) {
 				DBG ( "Command \"%s\" failed: %s\n",
 				      cmdbuf, strerror ( rc ) );
 				goto done;
 			}
 		}
-		
+		if ( offset == 0 )
+			this_allow = allow_bad;
+		else
+			allow_bad = this_allow;
 		/* Move to next line */
-		offset += ( len + 1 );
+		if ( offset == cur_len )		
+			offset += ( len + 1 );
+		else /* A done statement changed the offset */
+			offset = cur_len;
 	}
 
 	rc = 0;
  done:
+	DBG ( "AFTER: %i\n", get_free_heap () );
 	/* Re-register image and return */
 	register_image ( image );
 	return rc;
@@ -93,6 +113,9 @@ static int script_exec ( struct image *image ) {
 static int script_load ( struct image *image ) {
 	static const char magic[] = "#!gpxe";
 	char test[ sizeof ( magic ) - 1 /* NUL */ + 1 /* terminating space */];
+	static const char noexit_option[] = "--no-exit";
+	char option_test[ sizeof ( noexit_option ) ];
+	const char *ptr;
 
 	/* Sanity check */
 	if ( image->len < sizeof ( test ) ) {
@@ -107,7 +130,18 @@ static int script_load ( struct image *image ) {
 		DBG ( "Invalid magic signature\n" );
 		return -ENOEXEC;
 	}
-
+	allow_bad = 0;
+	/* Check for a --no-exit option */
+	ptr = ( const char * ) image->data + strlen ( magic );
+	while ( *ptr == ' ' || *ptr == '\t' )
+		ptr++;
+	strncpy ( option_test, ptr, strlen ( noexit_option ) );
+	option_test[strlen ( noexit_option ) ] = 0;
+	if ( !strcmp ( noexit_option, option_test ) && isspace ( ptr[strlen ( noexit_option )] ) ) {
+		allow_bad = 1;
+		DBG ( "--no-exit option\n" );
+	}
+	
 	/* This is a script */
 	image->type = &script_image_type;
 

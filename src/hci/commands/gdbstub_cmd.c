@@ -101,5 +101,6 @@ struct command gdbstub_commands[] __command = {
 	{
 		.name = "gdbstub",
 		.exec = gdbstub_exec,
+		.flags = 0,
 	},
 };

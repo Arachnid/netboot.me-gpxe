@@ -21,9 +21,13 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <readline/readline.h>
 #include <gpxe/command.h>
 #include <gpxe/shell.h>
+#include <gpxe/parse.h>
+
+#include <hci/if_cmd.h>
 
 /** @file
  *
@@ -34,6 +38,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 /** The shell prompt string */
 static const char shell_prompt[] = "gPXE> ";
 
+int command_source;
+size_t get_free_heap ( void );
 /** Flag set in order to exit shell */
 static int exit_flag = 0;
 
@@ -90,13 +96,39 @@ struct command help_command __command = {
  */
 void shell ( void ) {
 	char *line;
-
+	size_t offset = 0;
+	struct string input = { .value = 0 };
 	exit_flag = 0;
+	init_if();
+	printf ( "BEFORE: %i\n", get_free_heap () );
 	while ( ! exit_flag ) {
-		line = readline ( shell_prompt );
-		if ( line ) {
-			system ( line );
-			free ( line );
+		int len;
+		command_source = 0;
+		if ( input.value && offset < strlen ( input.value ) ) {
+			len = strcspn ( input.value + offset, "\n" );
+			line = strndup ( input.value + offset, len );
+		} else {
+			offset = input.value ? strlen ( input.value ) : 0;
+			line = readline ( shell_prompt
+				+ ( incomplete ? 4 : 0 ) );
+			string3cat ( &input, line, "\n"	);
 		}
+		if ( line ) {
+			cur_len = offset;
+			if ( !incomplete )
+				start_len = cur_len;
+			DBG ( "executing %d:[%s]\n", offset, line );
+			system ( line );
+			if ( cur_len == offset || command_source != 0 )
+				offset += strlen ( line ) + 1;
+			else
+				offset = cur_len;
+			free ( line );
+			DBG ( "stored: %s", input.value );
+			DBG ( "new offset = %d\n", offset );
+		} else
+			break;
 	}
+	free_string ( &input );
+	printf ( "AFTER: %i\n", get_free_heap () );
 }

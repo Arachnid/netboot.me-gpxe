@@ -182,9 +182,11 @@ struct command dhcp_commands[] __command = {
 	{
 		.name = "dhcp",
 		.exec = dhcp_exec,
+		.flags = 0,
 	},
 	{
 		.name = "pxebs",
 		.exec = pxebs_exec,
+		.flags = 0,
 	},
 };

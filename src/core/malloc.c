@@ -384,3 +384,8 @@ void mdumpfree ( void ) {
 	}
 }
 #endif
+
+#include <stdio.h>
+size_t get_free_heap () {
+	return freemem;
+}

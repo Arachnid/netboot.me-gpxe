@@ -107,6 +107,8 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #undef	TIME_CMD		/* Time commands */
 #undef	DIGEST_CMD		/* Image crypto digest commands */
 //#undef	PXE_CMD			/* PXE commands */
+#define	PXE_CMD			/* PXE commands */
+#define IF_CMD
 
 /*
  * Obscure configuration options

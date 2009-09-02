@@ -36,4 +36,5 @@ static int config_exec ( int argc, char **argv ) {
 struct command config_command __command = {
 	.name = "config",
 	.exec = config_exec,
+	.flags = 0,
 };

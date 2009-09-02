@@ -27,9 +27,11 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <getopt.h>
 #include <errno.h>
 #include <assert.h>
-#include <gpxe/tables.h>
 #include <gpxe/command.h>
+#include <gpxe/parse.h>
+#include <gpxe/gen_stack.h>
 #include <gpxe/settings.h>
+#include <hci/if_cmd.h>
 
 /** @file
  *
@@ -54,6 +56,7 @@ int nextchar;
 int execv ( const char *command, char * const argv[] ) {
 	struct command *cmd;
 	int argc;
+	int rc = -1;
 
 	/* Count number of arguments */
 	for ( argc = 0 ; argv[argc] ; argc++ ) {}
@@ -77,117 +80,92 @@ int execv ( const char *command, char * const argv[] ) {
 
 	/* Hand off to command implementation */
 	for_each_table_entry ( cmd, COMMANDS ) {
-		if ( strcmp ( command, cmd->name ) == 0 )
-			return cmd->exec ( argc, ( char ** ) argv );
+		if ( strcmp ( command, cmd->name ) == 0 ) {
+			DBG ( "if: %d\n", *element_at_top ( &if_stack, int ) );
+			DBG ( "cmd->flags: %d\n", cmd->flags );
+			if ( ( *element_at_top ( &if_stack, int ) == 1 )
+				|| ( cmd->flags & 0x1 ) ) {
+			
+				DBG ( "Executing command: %s\n", command );
+				rc = cmd->exec ( argc, ( char ** ) argv );
+				if ( ! ( cmd->flags & 0x1 ) ) {
+					store_rc ( rc );
+				}
+			} else
+				rc = 0;
+			return rc;
+		}
 	}
-
 	printf ( "%s: command not found\n", command );
 	return -ENOEXEC;
 }
 
-/**
- * Expand variables within command line
- *
- * @v command		Command line
- * @ret expcmd		Expanded command line
- *
- * The expanded command line is allocated with malloc() and the caller
- * must eventually free() it.
- */
-static char * expand_command ( const char *command ) {
-	char *expcmd;
-	char *start;
-	char *end;
-	char *head;
-	char *name;
-	char *tail;
-	int setting_len;
-	int new_len;
-	char *tmp;
-
-	/* Obtain temporary modifiable copy of command line */
-	expcmd = strdup ( command );
-	if ( ! expcmd )
-		return NULL;
-
-	/* Expand while expansions remain */
-	while ( 1 ) {
-
-		head = expcmd;
-
-		/* Locate opener */
-		start = strstr ( expcmd, "${" );
-		if ( ! start )
-			break;
-		*start = '\0';
-		name = ( start + 2 );
-
-		/* Locate closer */
-		end = strstr ( name, "}" );
-		if ( ! end )
-			break;
-		*end = '\0';
-		tail = ( end + 1 );
-
-		/* Determine setting length */
-		setting_len = fetchf_named_setting ( name, NULL, 0 );
-		if ( setting_len < 0 )
-			setting_len = 0; /* Treat error as empty setting */
-
-		/* Read setting into temporary buffer */
-		{
-			char setting_buf[ setting_len + 1 ];
-
-			setting_buf[0] = '\0';
-			fetchf_named_setting ( name, setting_buf,
-					       sizeof ( setting_buf ) );
-
-			/* Construct expanded string and discard old string */
-			tmp = expcmd;
-			new_len = asprintf ( &expcmd, "%s%s%s",
-					     head, setting_buf, tail );
-			free ( tmp );
-			if ( new_len < 0 )
-				return NULL;
-		}
+/** Expand a given command line and separate it into arguments */
+static int expand_command ( const char *command, struct stack *argv_stack ) {
+	char *head, *end;
+	int success;
+	int argc;
+	struct string expcmd = { .value = NULL };
+	
+	argc = 0;
+	
+	if ( !stringcpy ( &expcmd, command ) ) {
+		argc = -ENOMEM;
+		return argc;
 	}
-
-	return expcmd;
-}
-
-/**
- * Split command line into argv array
- *
- * @v args		Command line
- * @v argv		Argument array to populate, or NULL
- * @ret argc		Argument count
- *
- * Splits the command line into whitespace-delimited arguments.  If @c
- * argv is non-NULL, any whitespace in the command line will be
- * replaced with NULs.
- */
-static int split_args ( char *args, char * argv[] ) {
-	int argc = 0;
-
-	while ( 1 ) {
-		/* Skip over any whitespace / convert to NUL */
-		while ( isspace ( *args ) ) {
-			if ( argv )
-				*args = '\0';
-			args++;
+	head = expcmd.value;
+	
+	/* Go through the command line and expand */
+	while ( *head ) {
+		while ( isspace ( *head ) ) { /* Ignore leading spaces */
+			head++;
 		}
-		/* Check for end of line */
-		if ( ! *args )
+		if ( *head == '#' ) {
+			/* Comment is a new word that starts with # */
 			break;
-		/* We have found the start of the next argument */
-		if ( argv )
-			argv[argc] = args;
-		argc++;
-		/* Skip to start of next whitespace, if any */
-		while ( *args && ! isspace ( *args ) ) {
-			args++;
 		}
+		if ( !stringcpy ( &expcmd, head ) ) {
+			argc = -ENOMEM;
+			break;
+		}
+		head = expcmd.value;
+		end = expand_string ( &expcmd, head, toplevel_table, &success );
+
+		if ( end ) {
+			if ( success ) {
+				struct string *cur = NULL;
+				argc++;
+				
+				cur = stack_push ( argv_stack, struct string );
+				if ( cur ) {
+					cur->value = expcmd.value;
+					expcmd.value = NULL;
+					if ( !stringcpy ( &expcmd, end ) ) {
+						DBG ( "out of memory while "
+						"pushing: %s\n", end );
+						argc = -ENOMEM;
+						break;
+					}
+					*end = 0;
+					DBG ( "[%s]\n", cur->value );
+					/*
+					So if the command is: word1 word2 word3
+					argv_stack:	word1\0word2 word3
+								word2\0word3
+								word3
+					*/
+				} else {
+					argc = -ENOMEM;
+					break;
+				}
+			}
+		} else {
+			argc = -ENOMEM;
+			break;
+		}
+		head = expcmd.value;
 	}
+	free_string ( &expcmd );
 	return argc;
 }
 
@@ -200,30 +178,42 @@ static int split_args ( char *args, char * argv[] ) {
  * Execute the named command and arguments.
  */
 int system ( const char *command ) {
-	char *args;
-	int argc;
+	int argc = 0;
 	int rc = 0;
-
-	/* Perform variable expansion */
-	args = expand_command ( command );
-	if ( ! args )
+	static struct string complete_command;
+	struct stack_element *element;
+	
+	STACK ( argv_stack );
+	string3cat ( &complete_command, "\n", command );
+	incomplete = 0;
+	if ( !complete_command.value ) {
 		return -ENOMEM;
-
-	/* Count arguments */
-	argc = split_args ( args, NULL );
-
-	/* Create argv array and execute command */
-	if ( argc ) {
-		char * argv[argc + 1];
-		
-		split_args ( args, argv );
-		argv[argc] = NULL;
-
-		if ( argv[0][0] != '#' )
-			rc = execv ( argv[0], argv );
 	}
 
-	free ( args );
+	DBG ( "command = [%s]\n", complete_command.value );
+
+	argc = expand_command ( complete_command.value, &argv_stack );
+	DBG ( "argc = %d\n", argc );
+	
+	if ( !incomplete ) {
+		free_string ( &complete_command );
+		if ( argc <= 0 ) {
+			rc = argc;
+		} else {
+			char *argv[argc + 1];
+			int i = argc;
+			
+			stack_for_each ( element, &argv_stack ) {
+				argv[--i] = ( ( struct string * )
+						element->data )->value;
+				DBG ( "argv[%d] = [%s]\n", i, argv[i] );
+			}
+			argv[argc] = NULL;
+			rc = execv ( argv[0], argv );
+			test_try ( rc );
+		}
+	}
+	free_stack_string ( &argv_stack );
 	return rc;
 }
 
@@ -248,4 +238,5 @@ static int echo_exec ( int argc, char **argv ) {
 struct command echo_command __command = {
 	.name = "echo",
 	.exec = echo_exec,
+	.flags = 0,
 };

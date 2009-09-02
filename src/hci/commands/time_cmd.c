@@ -55,6 +55,7 @@ static int time_exec ( int argc, char **argv ) {
 struct command time_command __command = {
 	.name = "time",
 	.exec = time_exec,
+	.flags = 0,
 };
 
 static int sleep_exec ( int argc, char **argv ) {
@@ -81,4 +82,5 @@ static int sleep_exec ( int argc, char **argv ) {
 struct command sleep_command __command = {
 	.name = "sleep",
 	.exec = sleep_exec,
+	.flags = 0,
 };
