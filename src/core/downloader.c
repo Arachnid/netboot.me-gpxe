@@ -133,23 +133,10 @@ static void downloader_job_kill ( struct job_interface *job ) {
 	downloader_finished ( downloader, -ECANCELED );
 }
 
-/**
- * Report progress of download job
- *
- * @v job		Downloader job control interface
- * @v progress		Progress report to fill in
- */
 static void downloader_job_progress ( struct job_interface *job,
-				      struct job_progress *progress ) {
-	struct downloader *downloader =
-		container_of ( job, struct downloader, job );
-
-	/* This is not entirely accurate, since downloaded data may
-	 * arrive out of order (e.g. with multicast protocols), but
-	 * it's a reasonable first approximation.
-	 */
-	progress->completed = downloader->pos;
-	progress->total = downloader->image->len;
+	struct job_progress *progress ) {
+	/* Pass it on */
+	( job_get_dest(job)->op->progress )( job, progress );
 }
 
 /** Downloader job control interface operations */
