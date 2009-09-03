@@ -1,3 +1,31 @@
 #!gpxe
-autoboot
-chain http://www.netboot.me/menu.gpxe
+set i 0
+set booted 0
+while $( ${net${i}/mac} != "" )
+  dhcp net${i}
+  if $( ${rc} == 0 )
+    chain http://www.netboot.me/menu.gpxe
+    if $( ${rc} == 0 )
+      set booted 1
+      break
+    fi
+  fi
+  set i $( ${i} + 1 )
+done
+
+if $( ${booted} == 0 )
+  set i 0
+  echo We couldn\'t find a DHCP server. 
+  while $( ${net${i}/mac} != "" )
+    echo Please enter your network configuration on the next screen.
+    sleep 3
+    ifopen net${i}
+    config net${i}
+    chain http://www.netboot.me/menu.gpxe
+    if $( ${rc} == 0 )
+      break
+    fi
+    set i $( ${i} + 1 )
+    echo That didn't work. Trying the next network interface (if any)!
+  done
+fi

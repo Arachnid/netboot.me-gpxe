@@ -104,7 +104,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #define DHCP_CMD		/* DHCP management commands */
 #define SANBOOT_CMD		/* SAN boot commands */
 #define LOGIN_CMD		/* Login command */
-#undef	TIME_CMD		/* Time commands */
+#define	TIME_CMD		/* Time commands */
 #undef	DIGEST_CMD		/* Image crypto digest commands */
 //#undef	PXE_CMD			/* PXE commands */
 
